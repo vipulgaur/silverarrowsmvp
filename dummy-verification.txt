@@ -1,0 +1,8 @@
+# SilverArrows Flight Academy - GitHub Connection Verification
+Status: Connected & Verified
+Timestamp: 2026-10-27
+Repository: https://github.com/vipulgaur/silverarrowsmvp.git
+Owner: vipulgaur
+Branch: main
+
+This dummy verification file confirms write access to the silverarrowsmvp repository.
