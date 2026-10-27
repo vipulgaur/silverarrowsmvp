@@ -1,0 +1,10 @@
+{
+  "name": "SilverArrows — Aviation E-Learning & Flight Logger",
+  "description": "Aviation theory E-Learning (Air Manual - Pooley & Air Law) and Flight Logger academy operations platform.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

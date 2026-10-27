@@ -1,0 +1,302 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --font-sans:
+    "Plus Jakarta Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-learning-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+    monospace;
+}
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(95.5% 0.016 243);
+  --foreground: oklch(18% 0.038 248);
+  --card: oklch(99% 0.006 244 / 0.9);
+  --card-foreground: var(--foreground);
+  --popover: oklch(99.5% 0.004 244);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(55% 0.185 248);
+  --primary-ink: oklch(44% 0.165 248);
+  --primary-foreground: oklch(98.5% 0.005 245);
+  --secondary: oklch(91.5% 0.022 243);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(93% 0.018 243);
+  --muted-foreground: oklch(43% 0.035 246);
+  --accent: oklch(90.5% 0.04 244);
+  --accent-foreground: var(--foreground);
+  --destructive: oklch(56% 0.21 27);
+  --destructive-foreground: oklch(98% 0 0);
+  --success: oklch(48% 0.12 155);
+  --warning: oklch(86% 0.16 95);
+  --warning-foreground: oklch(44% 0.09 90);
+  --border: oklch(84% 0.025 243);
+  --input: oklch(80% 0.028 243);
+  --ring: oklch(58% 0.175 248);
+  --booking-lesson: oklch(55% 0.185 248);
+  --booking-solo: oklch(60% 0.14 160);
+  --booking-maintenance: oklch(58% 0.02 245);
+  --chart-1: var(--booking-lesson);
+  --chart-2: oklch(48% 0.03 245);
+  --chart-3: var(--booking-solo);
+  --chart-4: var(--destructive);
+  --chart-5: oklch(72% 0.03 245);
+  --sidebar: oklch(17.5% 0.038 248);
+  --sidebar-foreground: oklch(90% 0.015 242);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: oklch(26% 0.042 246);
+  --sidebar-accent-foreground: oklch(98% 0 0);
+  --sidebar-border: oklch(30% 0.038 246);
+  --sidebar-ring: var(--primary);
+  --app-bg-gradient:
+    radial-gradient(
+      ellipse 88% 78% at 82% 48%,
+      oklch(86% 0.048 242 / 0.55) 0%,
+      oklch(91% 0.03 243 / 0.4) 48%,
+      transparent 78%
+    ),
+    linear-gradient(
+      125deg,
+      oklch(97.5% 0.012 245) 0%,
+      oklch(94% 0.022 243) 48%,
+      oklch(89.5% 0.036 241) 100%
+    );
+}
+
+[data-color-theme="blue"] {
+  --primary: oklch(55% 0.185 248);
+  --primary-ink: oklch(44% 0.165 248);
+  --primary-foreground: oklch(98.5% 0.005 245);
+  --ring: oklch(58% 0.175 248);
+  --booking-lesson: oklch(55% 0.185 248);
+}
+
+.dark[data-color-theme="blue"],
+.dark {
+  --primary: oklch(68% 0.17 245);
+  --primary-foreground: oklch(14% 0.03 248);
+}
+
+[data-color-theme="yellow"] {
+  --primary: oklch(88% 0.18 98);
+  --primary-ink: oklch(46% 0.095 90);
+  --primary-foreground: oklch(16% 0.03 248);
+  --ring: oklch(70% 0.15 98);
+  --booking-lesson: oklch(70% 0.14 98);
+}
+
+[data-color-theme="green"] {
+  --primary: oklch(56% 0.165 150);
+  --primary-ink: oklch(42% 0.14 145);
+  --primary-foreground: oklch(98.5% 0.005 150);
+  --ring: oklch(58% 0.16 148);
+  --booking-lesson: oklch(56% 0.165 150);
+}
+
+[data-color-theme="burgundy"] {
+  --primary: oklch(55% 0.2 15);
+  --primary-ink: oklch(45% 0.18 15);
+  --primary-foreground: oklch(98.5% 0.005 15);
+  --ring: oklch(58% 0.19 15);
+  --booking-lesson: oklch(55% 0.2 15);
+}
+
+.dark {
+  --background: oklch(20.5% 0.038 248);
+  --foreground: oklch(95% 0.01 242);
+  --card: oklch(22.5% 0.04 248 / 0.86);
+  --card-foreground: var(--foreground);
+  --popover: oklch(23% 0.042 248);
+  --popover-foreground: var(--foreground);
+  --primary-ink: var(--primary);
+  --secondary: oklch(27.5% 0.042 246);
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(25% 0.038 247);
+  --muted-foreground: oklch(76% 0.025 242);
+  --accent: oklch(29% 0.045 245);
+  --accent-foreground: var(--primary);
+  --border: oklch(33% 0.04 245);
+  --input: oklch(37% 0.042 245);
+  --success: oklch(73% 0.14 155);
+  --destructive: oklch(72% 0.17 27);
+  --destructive-foreground: oklch(16% 0 0);
+  --warning-foreground: var(--primary);
+  --booking-lesson: var(--primary);
+  --chart-2: oklch(72% 0.03 242);
+  --sidebar: oklch(16.5% 0.036 248);
+  --sidebar-foreground: oklch(88% 0.018 242);
+  --sidebar-accent: oklch(25.5% 0.042 246);
+  --sidebar-border: var(--border);
+  --app-bg-gradient:
+    radial-gradient(
+      ellipse 88% 78% at 82% 48%,
+      oklch(56% 0.046 240 / 0.58) 0%,
+      oklch(38% 0.048 245 / 0.42) 46%,
+      transparent 78%
+    ),
+    linear-gradient(
+      125deg,
+      oklch(18.5% 0.036 248) 0%,
+      oklch(23.5% 0.042 246) 46%,
+      oklch(34.5% 0.048 242) 100%
+    );
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  body {
+    background-color: var(--background);
+    background-image: var(--app-bg-gradient);
+    background-attachment: fixed;
+    color: var(--foreground);
+    font-family: var(--font-sans);
+  }
+}
+
+.min-h-screen.bg-background {
+  background-image: var(--app-bg-gradient);
+  background-attachment: fixed;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.learning-hotspot {
+  left: var(--hotspot-x);
+  top: var(--hotspot-y);
+  transform: translate(-50%, -50%);
+}
+
+.learning-still {
+  aspect-ratio: var(--figure-ratio);
+}
+
+.learning-contents {
+  scrollbar-width: thin;
+  max-height: calc(100vh - 10rem);
+  padding-right: 0.5rem;
+  overflow-y: auto;
+}
+
+.learning-prose p {
+  margin: 1rem 0;
+  line-height: 1.95;
+}
+
+.learning-prose h3 {
+  margin: 2rem 0 1rem;
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.learning-prose ul {
+  padding-left: 1.5rem;
+  list-style: outside;
+}
+
+.learning-prose ol {
+  padding-left: 1.5rem;
+  list-style: decimal;
+}
+
+.learning-prose li {
+  margin: 0.6rem 0;
+  line-height: 1.8;
+}
+
+.learning-prose blockquote {
+  border-left: 3px solid var(--primary);
+  background: var(--muted);
+  padding: 0.5rem 1.25rem;
+}
+
+.learning-prose table {
+  text-align: left;
+  width: 100%;
+  min-width: 480px;
+}
+
+.learning-prose th {
+  background: var(--secondary);
+}
+
+.learning-prose td,
+.learning-prose th {
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+  padding: 1rem;
+  line-height: 1.8;
+}
+
+.learning-prose hr {
+  margin: 2rem 0;
+}
+
+.learning-prose code {
+  background: var(--secondary);
+  border-radius: 0.25rem;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.9em;
+}
+
+.learning-prose pre {
+  white-space: pre;
+  background: var(--muted);
+  min-width: 0;
+  max-width: 100%;
+  color: var(--foreground);
+  border-radius: var(--radius-md);
+  font-family: var(--font-learning-mono);
+  tab-size: 4;
+  padding: 1.25rem;
+  font-size: 0.875rem;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.learning-prose pre code {
+  width: max-content;
+  min-width: 100%;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  white-space: inherit;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  display: block;
+}
