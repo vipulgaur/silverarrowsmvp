@@ -150,11 +150,39 @@ const hybridAuth = {
     setStoredDemoSession(null);
 
     try {
-      const res = await realSupabase.auth.signInWithPassword({
+      let res = await realSupabase.auth.signInWithPassword({
         email: clean,
         password: testPassword,
       });
+
+      // If account does not exist in Supabase auth yet, auto-provision it with the testing password
+      if (res.error && (res.error.message?.toLowerCase().includes("invalid login credentials") || res.error.message?.toLowerCase().includes("user not found"))) {
+        const signupRes = await realSupabase.auth.signUp({
+          email: clean,
+          password: testPassword,
+        });
+        if (!signupRes.error && signupRes.data.user) {
+          res = await realSupabase.auth.signInWithPassword({
+            email: clean,
+            password: testPassword,
+          });
+        }
+      }
+
       if (!res.error && res.data.user) {
+        // Link member in tenant_members table so RLS and Realtime have profile_id set
+        const role = inferRoleFromEmail(clean);
+        const namePart = clean.split("@")[0] || "Pilot";
+        try {
+          await realSupabase.rpc("register_member", {
+            p_first: namePart,
+            p_last: "Member",
+            p_role: role,
+            p_master: role === "admin" ? "Vipul@1011" : null,
+          });
+        } catch {
+          /* ignore rpc errors if already registered */
+        }
         return res;
       }
     } catch {

@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import {
   createContext,
   useCallback,
@@ -76,6 +77,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [meId, setMeId] = useState<string | null>(null);
   const [noAccess, setNoAccess] = useState(false);
   const [hydrated, setHydrated] = useState(false);
+  const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
 
   const latest = useRef<AppData>(data);
   latest.current = data;
@@ -104,9 +106,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const syncFromServerOrLocal = useCallback(async () => {
+    // 1. Check real Supabase authenticated user first
+    const { data: authData } = await supabase.auth.getUser();
+    const authUser = authData?.user;
+
+    if (authUser) {
+      try {
+        const loaded = await loadAcademy(authUser.id);
+        if (loaded) {
+          tenantIdRef.current = loaded.tenantId;
+          setActiveTenantId(loaded.tenantId);
+          const remoteTables = toTables(loaded.data, loaded.tenantId);
+          const pendingDiff = baselineRef.current
+            ? diffTables(baselineRef.current, toTables(latest.current, loaded.tenantId))
+            : null;
+          const reconciledTables =
+            pendingDiff && hasChanges(pendingDiff)
+              ? mergePending(remoteTables, pendingDiff)
+              : remoteTables;
+          baselineRef.current = reconciledTables;
+
+          const reconciledData = mergeCourseAssignments(
+            enrichWithSeedDefaults(fromTables(reconciledTables), latest.current),
+          );
+          writeStoredCourseAssignments(reconciledData.activity);
+          writeDemoData(reconciledData);
+          latest.current = reconciledData;
+          setData(reconciledData);
+          setMeId(loaded.meId);
+          setNoAccess(false);
+          setHydrated(true);
+          return;
+        }
+      } catch (err) {
+        console.warn("Failed to load academy from Supabase:", err);
+      }
+    }
+
+    // 2. If not authenticated, check demo session
     const demoSession = getStoredDemoSession();
     if (demoSession) {
       tenantIdRef.current = null;
+      setActiveTenantId(null);
       baselineRef.current = null;
       const sharedSnapshot = await fetchLocalSync();
       const baseData = sharedSnapshot ?? readDemoData().data;
@@ -120,58 +161,15 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const { data: authData } = await supabase.auth.getUser();
-    const authUser = authData?.user;
     if (!authUser) {
       tenantIdRef.current = null;
+      setActiveTenantId(null);
       baselineRef.current = null;
       setMeId(null);
       setNoAccess(false);
       setHydrated(true);
       return;
     }
-
-    try {
-      const loaded = await loadAcademy(authUser.id);
-      if (loaded) {
-        tenantIdRef.current = loaded.tenantId;
-        const remoteTables = toTables(loaded.data, loaded.tenantId);
-        const pendingDiff = baselineRef.current
-          ? diffTables(baselineRef.current, toTables(latest.current, loaded.tenantId))
-          : null;
-        const reconciledTables =
-          pendingDiff && hasChanges(pendingDiff)
-            ? mergePending(remoteTables, pendingDiff)
-            : remoteTables;
-        baselineRef.current = reconciledTables;
-
-        const reconciledData = mergeCourseAssignments(
-          enrichWithSeedDefaults(fromTables(reconciledTables), latest.current),
-        );
-        writeStoredCourseAssignments(reconciledData.activity);
-        writeDemoData(reconciledData);
-        latest.current = reconciledData;
-        setData(reconciledData);
-        setMeId(loaded.meId);
-        setNoAccess(false);
-        setHydrated(true);
-        return;
-      }
-    } catch {
-      /* fallback to local store if offline */
-    }
-
-    // Fallback: match by email in local store
-    const localData = mergeCourseAssignments(readDemoData().data);
-    const matched = localData.users.find(
-      (u) =>
-        u.email.toLowerCase() === (authUser.email ?? "").toLowerCase() && u.status !== "deleted",
-    );
-    latest.current = localData;
-    setData(localData);
-    setMeId(matched?.id ?? null);
-    setNoAccess(!matched);
-    setHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -221,9 +219,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [syncFromServerOrLocal]);
 
   // Tenant-scoped Realtime subscription reconciling remote rows with unsaved local diffs
-  const activeTenantId = tenantIdRef.current;
   useEffect(() => {
-    if (!activeTenantId || !meId) return;
+    if (!activeTenantId) return;
     const channel = supabase
       .channel(`academy-realtime-${activeTenantId}`)
       .on(
@@ -231,7 +228,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         {
           event: "*",
           schema: "public",
-          filter: `tenant_id=eq.${activeTenantId}`,
         },
         () => {
           void syncFromServerOrLocal();
@@ -242,7 +238,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [activeTenantId, meId, syncFromServerOrLocal]);
+  }, [activeTenantId, syncFromServerOrLocal]);
 
   const update = useCallback(
     (fn: (d: AppData) => AppData) => {
@@ -360,8 +356,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       try {
         const persisted = await persistBooking(enrichedInput, tenantIdRef.current, d);
         canonical = enrichBookingWithWeather(persisted, enrichedInput);
-      } catch {
-        canonical = enrichedInput;
+      } catch (err) {
+        console.error("persistBooking failed:", err);
+        toast.error((err as Error).message || "Failed to save booking to database.");
+        throw err;
       }
     }
     const nextBookings = d.bookings.some((x) => x.id === canonical.id)
@@ -447,6 +445,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       noAccess,
       signOut: async () => {
         tenantIdRef.current = null;
+        setActiveTenantId(null);
         baselineRef.current = null;
         setMeId(null);
         setNoAccess(false);
