@@ -379,7 +379,7 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
   const [unassigningBusy, setUnassigningBusy] = useState(false);
 
   const isSelf = me?.id === person.id;
-  const isAdminViewer = me?.role === "admin" && person.role === "admin";
+  const isAdminViewer = me?.role === "admin";
   const assignedModules = accessibleModulesFor(person, data);
 
   const activeCandidates = data.users.filter((u) => u.status === "active" && u.role !== "admin");
@@ -392,7 +392,7 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
 
   function handleOpenAssign(mod: ELearningModule) {
     setTargetModule(mod);
-    setSelectedCandidateIds([]);
+    setSelectedCandidateIds(person.role !== "admin" ? [person.id] : []);
     setCandidateSearch("");
     setAssignmentNote("");
     setAssignModalOpen(true);
@@ -405,9 +405,9 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
     setUnassignModalOpen(true);
   }
 
-  async function handleQuickUnassign(courseId: CourseId, userId: string, userName: string) {
+  function handleQuickUnassign(courseId: CourseId, userId: string, userName: string) {
     if (!me || me.role !== "admin") return;
-    await update((prev) => unassignCourseFromUsers(prev, me, courseId, [userId]));
+    update((prev) => unassignCourseFromUsers([userId], courseId, prev, me).next);
     toast.success(`Course unassigned from ${userName}`);
   }
 
@@ -419,13 +419,19 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
     }
     setAssigningBusy(true);
     try {
-      await update((prev) =>
-        assignCourseToUsers(prev, me, targetModule.id, selectedCandidateIds, assignmentNote.trim()),
-      );
       const assignedNames = data.users
         .filter((u) => selectedCandidateIds.includes(u.id))
         .map((u) => u.name)
         .join(", ");
+      update((prev) =>
+        assignCourseToUsers(
+          selectedCandidateIds,
+          targetModule.id,
+          prev,
+          me,
+          assignmentNote.trim() || undefined,
+        ).next,
+      );
       toast.success(`"${targetModule.title}" assigned to ${assignedNames}`, {
         description:
           "Assigned students will immediately receive a real-time notification and see this course on their E-Learning dashboard.",
@@ -444,13 +450,13 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
     }
     setUnassigningBusy(true);
     try {
-      await update((prev) =>
-        unassignCourseFromUsers(prev, me, targetModule.id, unassignCandidateIds),
-      );
       const removedNames = data.users
         .filter((u) => unassignCandidateIds.includes(u.id))
         .map((u) => u.name)
         .join(", ");
+      update((prev) =>
+        unassignCourseFromUsers(unassignCandidateIds, targetModule.id, prev, me).next,
+      );
       toast.success(`"${targetModule.title}" unassigned from ${removedNames}`);
       setUnassignModalOpen(false);
     } finally {

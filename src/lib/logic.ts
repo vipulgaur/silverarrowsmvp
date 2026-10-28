@@ -700,6 +700,33 @@ export function restoreUser(data: AppData, userId: string, admin: User): AppData
   };
 }
 
+export const PENDING_APPROVAL_STATUS_REASON = "PENDING_ADMIN_APPROVAL";
+
+export function isUserPendingApproval(
+  u?: Pick<User, "statusReason" | "status"> | null,
+): boolean {
+  return Boolean(u && u.status !== "deleted" && u.statusReason === PENDING_APPROVAL_STATUS_REASON);
+}
+
+export function approveUserLogin(data: AppData, userId: string, admin: User): AppData | string {
+  if (admin.role !== "admin") return "Only administrators can approve user login access.";
+  const u = data.users.find((x) => x.id === userId);
+  if (!u) return "User not found.";
+  return {
+    ...data,
+    users: data.users.map((x) =>
+      x.id === userId
+        ? {
+            ...x,
+            status: "active",
+            statusReason: undefined,
+          }
+        : x,
+    ),
+  };
+}
+
+
 export const can = {
   manageUsers: (r: Role) => r === "admin",
   manageFleet: (r: Role) => r === "admin",
@@ -1173,20 +1200,107 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
       : [];
 
   const flightVerifications: AppNotification[] = data.activity
+    .filter((a) => {
+      if (
+        a.action === "flight_verified" ||
+        a.action === "flight_rejected" ||
+        a.action === "post_flight_confirmed_yes" ||
+        (a.action === "flight_logged" && a.actorId !== me.id)
+      ) {
+        if (
+          data.flights.some(
+            (f) => f.id === a.entityId && (f.pilotId === me.id || f.instructorId === me.id),
+          )
+        ) {
+          return true;
+        }
+        if (me.name && a.details.toLowerCase().includes(me.name.toLowerCase())) {
+          return true;
+        }
+        return false;
+      }
+      if (a.action === "post_flight_confirmed_no") {
+        if (
+          data.bookings.some(
+            (b) => b.id === a.entityId && (b.studentId === me.id || b.instructorId === me.id),
+          )
+        ) {
+          return true;
+        }
+        if (me.name && a.details.toLowerCase().includes(me.name.toLowerCase())) {
+          return true;
+        }
+        return false;
+      }
+      return false;
+    })
+    .map((a) => {
+      const isApproved =
+        a.action === "flight_verified" ||
+        a.action === "post_flight_confirmed_yes" ||
+        a.action === "flight_logged";
+      const title =
+        a.action === "post_flight_confirmed_yes"
+          ? "Flight approved & logged by Administrator"
+          : a.action === "post_flight_confirmed_no"
+            ? "Scheduled flight marked Did Not Fly"
+            : a.action === "flight_logged"
+              ? "Flight approved & added to your logbook"
+              : a.action === "flight_verified"
+                ? "Flight log verified & approved"
+                : "Flight log rejected";
+      return {
+        id: `flightver:${a.id}`,
+        title,
+        detail: a.details,
+        at: a.at,
+        to: a.action === "post_flight_confirmed_no" ? "/schedule" : "/flights",
+        status: isApproved ? "approved" : "declined",
+        priority: "medium" as const,
+        category: "flight" as const,
+      };
+    });
+
+  const accountApprovalRequests: AppNotification[] =
+    me.role === "admin"
+      ? data.users
+          .filter((u) => isUserPendingApproval(u))
+          .map((u) => {
+            const reqAct = data.activity.find(
+              (a) =>
+                a.action === "account_registration_requested" &&
+                (a.entityId === u.id ||
+                  a.details.toLowerCase().includes(u.email.toLowerCase())),
+            );
+            return {
+              id: `accountapproval:${u.id}`,
+              title: `New Account Login Approval Requested — ${u.name}`,
+              detail: `${u.name} (${u.email}${u.phone ? ` · ${u.phone}` : ""}) registered as ${roleLabel[u.role]} and is awaiting Administrator login approval.`,
+              at: reqAct?.at ?? new Date().toISOString(),
+              to: "/portal/admin",
+              status: "pending" as const,
+              priority: "critical" as const,
+              category: "profile" as const,
+            };
+          })
+      : [];
+
+  const accountApprovedNotifs: AppNotification[] = data.activity
     .filter(
       (a) =>
-        (a.action === "flight_verified" || a.action === "flight_rejected") &&
-        data.flights.some((f) => f.id === a.entityId && f.pilotId === me.id),
+        a.action === "user_login_approved" &&
+        (a.entityId === me.id ||
+          (me.email && a.details.toLowerCase().includes(me.email.toLowerCase()))),
     )
     .map((a) => ({
-      id: `flightver:${a.id}`,
-      title: a.action === "flight_verified" ? "Flight log verified" : "Flight log rejected",
+      id: `loginapproved:${a.id}`,
+      title: "Account login approved by Administrator",
       detail: a.details,
       at: a.at,
-      to: "/flights",
-      status: a.action === "flight_verified" ? "approved" : "declined",
-      priority: "low",
-      category: "flight",
+      to: homeFor[me.role],
+      status: "approved" as const,
+      priority: "medium" as const,
+      category: "profile" as const,
     }));
 
   const pendingFlightLogReviews: AppNotification[] =
@@ -1303,6 +1417,7 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
       : [];
 
   return [
+    ...accountApprovalRequests,
     ...postFlightChecks,
     ...maintenanceAlerts,
     ...adminDocExpiries,
@@ -1313,6 +1428,7 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
     ...outcomes,
     ...courseAssignments,
     ...flightVerifications,
+    ...accountApprovedNotifs,
     ...studentUpcomingAndExpiry,
   ]
     .map((n) => ({ ...n, read: read.includes(n.id) }))

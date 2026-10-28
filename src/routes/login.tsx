@@ -33,6 +33,8 @@ import { LiveIstClock } from "@/components/live-ist-clock";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useTheme } from "@/components/theme-provider";
 import { recordUserLoginSession } from "@/lib/privacy-tracker";
+import { isUserPendingApproval } from "@/lib/logic";
+import { playNotificationSound } from "@/lib/notification-sound";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/login")({
@@ -1360,6 +1362,23 @@ function LoginPage() {
     void navigate({ to: "/dashboard" });
   }
 
+  // Real-time auto-unlock when an Administrator approves a waiting pending user
+  const wasPendingRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || !me) {
+      wasPendingRef.current = false;
+      return;
+    }
+    if (isUserPendingApproval(me)) {
+      wasPendingRef.current = true;
+    } else if (wasPendingRef.current) {
+      wasPendingRef.current = false;
+      playNotificationSound();
+      toast.success("Your account login has been approved by the Administrator! Entering portal…");
+      void navigate({ to: "/dashboard" });
+    }
+  }, [hydrated, me, navigate]);
+
   // Handle Form Submission (Sign In or Create Account)
   async function submitAuth(e: FormEvent) {
     e.preventDefault();
@@ -1405,12 +1424,11 @@ function LoginPage() {
         return;
       }
     } else {
-      // In controlled testing mode, validate testing password for flysilverarrows accounts
-      const isTestAccount =
-        clean.endsWith("@flysilverarrows.com") ||
-        clean.endsWith("@silverarrows.aero") ||
-        clean.endsWith("@mail.com");
-      if (isTestAccount && password !== FIXED_TESTING_PASSWORD && password !== "demo12345") {
+      // In controlled testing mode, validate testing password for canonical testing personas
+      const isCanonicalPersona = TESTING_USERS.some(
+        (u) => u.email.toLowerCase() === clean.toLowerCase(),
+      );
+      if (isCanonicalPersona && password !== FIXED_TESTING_PASSWORD && password !== "demo12345") {
         toast.error("Invalid password. Access is restricted to authorized credentials.");
         return;
       }
@@ -1443,6 +1461,15 @@ function LoginPage() {
           );
         }
         await reload();
+        const matchingUser = data.users.find(
+          (u) => u.email.toLowerCase() === clean.toLowerCase() && u.status !== "deleted",
+        );
+        if (isUserPendingApproval(matchingUser)) {
+          toast.warning(
+            "Your account is registered and awaiting Administrator approval before portal access is granted.",
+          );
+          return;
+        }
         toast.success(`Signed in successfully as ${signInData.user?.email || clean}!`);
         navigateForEmail();
       }
@@ -1450,7 +1477,7 @@ function LoginPage() {
     }
 
     // Sign Up Mode
-    const { data: signUpData, error } = await supabase.auth.signUp({
+    const { error } = await supabase.auth.signUp({
       email: clean,
       password,
       options: { emailRedirectTo: window.location.origin },
@@ -1462,10 +1489,11 @@ function LoginPage() {
       return;
     }
 
-    // Register member in database table
+    // Register member in database table (non-admin accounts start as PENDING_ADMIN_APPROVAL)
     const { error: regErr } = await db.rpc("register_member", {
       p_first: firstName.trim(),
       p_last: lastName.trim(),
+      p_email: clean.toLowerCase(),
       p_phone: phone.trim(),
       p_role: role,
       p_master: role === "admin" ? master : null,
@@ -1479,17 +1507,15 @@ function LoginPage() {
     }
 
     await reload();
-    if (phone.trim()) {
-      update((prev) => ({
-        ...prev,
-        users: prev.users.map((u) =>
-          u.email.toLowerCase() === clean.toLowerCase() ? { ...u, phone: phone.trim() } : u,
-        ),
-      }));
-    }
     setBusy(false);
-    toast.success("Account created and saved to database — Welcome to SilverArrows!");
-    void navigate({ to: "/dashboard" });
+    if (role === "admin") {
+      toast.success("Administrator account created and saved to database!");
+      void navigate({ to: "/dashboard" });
+    } else {
+      toast.success(
+        "Account registered in database! Access will unlock automatically as soon as the Administrator approves your login.",
+      );
+    }
   }
 
   return (
@@ -1587,10 +1613,22 @@ function LoginPage() {
 
           {/* Active Session Card (if user is currently logged in) */}
           {hydrated && me && (
-            <div className="my-4 rounded-2xl border border-primary/40 bg-primary/10 p-4 text-xs">
+            <div
+              className={`my-4 rounded-2xl border p-4 text-xs ${
+                isUserPendingApproval(me)
+                  ? "border-amber-500/50 bg-amber-500/10"
+                  : "border-primary/40 bg-primary/10"
+              }`}
+            >
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary font-mono text-[11px] font-bold text-primary-foreground">
+                  <span
+                    className={`flex h-7 w-7 items-center justify-center rounded-full font-mono text-[11px] font-bold ${
+                      isUserPendingApproval(me)
+                        ? "bg-amber-500 text-slate-950"
+                        : "bg-primary text-primary-foreground"
+                    }`}
+                  >
                     {me.name.slice(0, 2).toUpperCase()}
                   </span>
                   <div>
@@ -1612,14 +1650,28 @@ function LoginPage() {
                 </Button>
               </div>
 
-              <Button
-                type="button"
-                size="sm"
-                className="mt-3 w-full text-xs font-semibold shadow-xs"
-                onClick={() => void navigate({ to: "/dashboard" })}
-              >
-                <Plane className="mr-1.5 h-3.5 w-3.5" /> Continue to Dashboard
-              </Button>
+              {isUserPendingApproval(me) ? (
+                <div className="mt-3 rounded-xl border border-amber-500/40 bg-background/80 p-3 text-left">
+                  <div className="flex items-center gap-2 font-bold text-amber-600 dark:text-amber-400">
+                    <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+                    <span>Account Pending Administrator Login Approval</span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+                    Your account has been created in the database. Portal access is locked until the
+                    Administrator approves your login. Keep this screen open — your portal will
+                    unlock automatically in real time as soon as approved.
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  size="sm"
+                  className="mt-3 w-full text-xs font-semibold shadow-xs"
+                  onClick={() => void navigate({ to: "/dashboard" })}
+                >
+                  <Plane className="mr-1.5 h-3.5 w-3.5" /> Continue to Dashboard
+                </Button>
+              )}
             </div>
           )}
 

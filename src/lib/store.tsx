@@ -13,7 +13,7 @@ import type { ActivityLog, AppData, Booking, Flight, User } from "./types";
 import { seedData } from "./seed";
 import { uid } from "./logic";
 import { enrichWithSeedDefaults, readDemoData, writeDemoData } from "./demo-storage";
-import { getStoredDemoSession, supabase } from "@/integrations/supabase/client";
+import { getStoredDemoSession, isTestEnv, supabase } from "@/integrations/supabase/client";
 import { loadAcademy, persistBooking, pushChanges } from "./api/sync";
 import {
   fetchLocalSync,
@@ -107,9 +107,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const syncFromServerOrLocal = useCallback(async () => {
-    // 1. If an explicit local demo session is active (e.g. offline fallback or test harness), resolve locally first
     const demoSession = getStoredDemoSession();
-    if (demoSession) {
+
+    // 1. In unit tests, resolve local demoSession synchronously without network
+    if (demoSession && isTestEnv) {
       tenantIdRef.current = null;
       setActiveTenantId(null);
       baselineRef.current = null;
@@ -125,13 +126,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 2. Check real Supabase authenticated user
+    // 2. Check real Supabase authenticated user OR active demoSession in browser
     const { data: authData } = await supabase.auth.getUser();
-    const authUser = authData?.user;
+    const authUser = authData?.user ?? demoSession?.user ?? null;
 
     if (authUser) {
       try {
-        const loaded = await loadAcademy(authUser.id);
+        const loaded = await loadAcademy(authUser.id, authUser.email);
         if (loaded) {
           tenantIdRef.current = loaded.tenantId;
           setActiveTenantId(loaded.tenantId);

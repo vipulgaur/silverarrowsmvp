@@ -19,7 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Chip, Field, NativeSelect, PageHeader, Section } from "@/components/app-ui";
 import { useMe } from "@/lib/store";
-import { supabase } from "@/integrations/supabase/client";
+import { provisionAuthUserWithoutSessionSwitch } from "@/integrations/supabase/client";
 import { activeUsers, GENDERS, uid } from "@/lib/logic";
 import { roleLabel, type Lesson, type Role, type User } from "@/lib/types";
 
@@ -184,13 +184,9 @@ function AdminCreatePage() {
       users: [...d.users, newUser],
     }));
 
-    // Pre-provision Supabase Auth credentials with testing master password
-    void supabase.auth
-      .signUp({
-        email: cleanEmail,
-        password: "Vipul@1011",
-      })
-      .catch(() => {});
+    // Pre-provision Supabase Auth credentials with testing master password on a stateless client
+    // so the currently signed-in Administrator's session is never replaced
+    void provisionAuthUserWithoutSessionSwitch(cleanEmail, "Vipul@1011");
 
     log(
       "user_created",

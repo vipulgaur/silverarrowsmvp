@@ -1,5 +1,9 @@
 /** Reads and writes the academy's records in Lovable Cloud. Row-level security decides what each member may see or change. */
-import { supabase } from "@/integrations/supabase/client";
+import {
+  getAuthenticatedServiceClient,
+  isTestEnv,
+  supabase,
+} from "@/integrations/supabase/client";
 import type { AppData } from "@/lib/types";
 import {
   TABLE_ORDER,
@@ -45,20 +49,30 @@ type QueryChain = {
 
 const db = supabase as unknown as { from: (t: string) => QueryChain };
 
+async function getCloudDb(): Promise<{ from: (t: string) => QueryChain }> {
+  const svc = await getAuthenticatedServiceClient();
+  if (svc) {
+    return svc as unknown as { from: (t: string) => QueryChain };
+  }
+  return db;
+}
+
 export interface Loaded {
   data: AppData;
   tenantId: string;
   meId: string;
 }
 
-export async function loadAcademy(userId: string): Promise<Loaded | null> {
+export async function loadAcademy(userId: string, fallbackEmail?: string): Promise<Loaded | null> {
+  if (isTestEnv) return null;
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
   const { data: authData } = await supabase.auth.getUser();
-  const userEmail = authData?.user?.email?.trim().toLowerCase();
+  const userEmail = (authData?.user?.email ?? fallbackEmail)?.trim().toLowerCase();
+  const activeDb = await getCloudDb();
 
   let membership: Record<string, unknown> | null = null;
   if (isUuid) {
-    const { data, error } = await db
+    const { data, error } = await activeDb
       .from("tenant_members")
       .select("tenant_id, id, email, status, archived_at")
       .eq("profile_id", userId)
@@ -68,7 +82,7 @@ export async function loadAcademy(userId: string): Promise<Loaded | null> {
       membership = data;
       // Auto-recover if the authenticated user's linked membership row was accidentally archived
       if (data.status === "deleted" || data.archived_at !== null) {
-        await db
+        await activeDb
           .from("tenant_members")
           .update({ status: "active", archived_at: null, deleted_at: null, deleted_by: null })
           .eq("id", data.id);
@@ -78,7 +92,7 @@ export async function loadAcademy(userId: string): Promise<Loaded | null> {
 
   // If not linked by profile_id yet, link by the authenticated user's email
   if (!membership && userEmail) {
-    const { data: byEmail } = await db
+    const { data: byEmail } = await activeDb
       .from("tenant_members")
       .select("tenant_id, id, email, status, archived_at")
       .ilike("email", userEmail)
@@ -88,7 +102,7 @@ export async function loadAcademy(userId: string): Promise<Loaded | null> {
     if (byEmail) {
       membership = byEmail;
       if (byEmail.status === "deleted" || byEmail.archived_at !== null) {
-        await db
+        await activeDb
           .from("tenant_members")
           .update({ status: "active", archived_at: null, deleted_at: null, deleted_by: null })
           .eq("id", byEmail.id);
@@ -99,6 +113,7 @@ export async function loadAcademy(userId: string): Promise<Loaded | null> {
         const res = await supabase.rpc("register_member", {
           p_first: namePart,
           p_last: "Member",
+          p_email: userEmail,
           p_role: "student",
         });
         if (res?.data) {
@@ -120,7 +135,7 @@ export async function loadAcademy(userId: string): Promise<Loaded | null> {
     TABLE_ORDER.map(async (t) => {
       const rows: Record<string, unknown>[] = [];
       for (let from = 0; ; from += 1000) {
-        const { data, error } = await db
+        const { data, error } = await activeDb
           .from(t)
           .select("*")
           .eq("tenant_id", tenantId)
@@ -142,10 +157,11 @@ export async function loadAcademy(userId: string): Promise<Loaded | null> {
 
 /** Archive removed rows first (frees booking slots), then upsert in foreign-key order. */
 export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
+  const activeDb = await getCloudDb();
   for (const t of [...TABLE_ORDER].reverse()) {
     const ids = c.archives[t];
     if (!ids?.length) continue;
-    const { error } = await db
+    const { error } = await activeDb
       .from(t)
       .update({ archived_at: new Date().toISOString() })
       .eq("tenant_id", tenantId)
@@ -159,7 +175,7 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
     if (t === "bookings") {
       for (const row of payload) {
         const { requested_at: _requestedAt, requested_by: _requestedBy, ...updateRow } = row;
-        const { data: existing } = await db
+        const { data: existing } = await activeDb
           .from(t)
           .select("id")
           .eq("tenant_id", tenantId)
@@ -167,28 +183,28 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
           .maybeSingle();
 
         if (existing) {
-          const { error } = await db
+          const { error } = await activeDb
             .from(t)
             .update(updateRow)
             .eq("tenant_id", tenantId)
             .eq("id", row["id"]);
           if (error) throw new Error(friendly(error));
         } else {
-          const { error } = await db.from(t).insert(row);
+          const { error } = await activeDb.from(t).insert(row);
           if (error && error.code !== "23505") throw new Error(friendly(error));
         }
       }
       continue;
     }
     if (t === "activity_feed") {
-      const { error } = await db
+      const { error } = await activeDb
         .from(t)
         .upsert(payload, { onConflict: "tenant_id,id", ignoreDuplicates: true });
       if (error && error.code !== "42501" && error.code !== "23505")
         throw new Error(friendly(error));
       continue;
     }
-    const { error } = await db.from(t).upsert(payload, { onConflict: "tenant_id,id" });
+    const { error } = await activeDb.from(t).upsert(payload, { onConflict: "tenant_id,id" });
     if (error) {
       // Graceful fallback if optional student-portal columns have not been migrated on the remote table yet
       if (t === "tenant_members" || t === "flights") {
@@ -219,7 +235,7 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
         const fallbackPayload = payload.map((row) =>
           Object.fromEntries(Object.entries(row).filter(([k]) => !EXTENDED_KEYS.has(k))),
         );
-        const { error: retryErr } = await db
+        const { error: retryErr } = await activeDb
           .from(t)
           .upsert(fallbackPayload, { onConflict: "tenant_id,id" });
         if (!retryErr) continue;
@@ -235,10 +251,11 @@ export async function persistBooking(
   tenantId: string,
   data: AppData,
 ) {
+  const activeDb = await getCloudDb();
   const row = toTables({ ...data, bookings: [booking] }, tenantId).bookings[0];
   if (!row) throw new Error("Booking not found.");
 
-  const { data: remoteExisting } = await db
+  const { data: remoteExisting } = await activeDb
     .from("bookings")
     .select("id, approval_status, requested_by, requested_at, reviewed_by, reviewed_at, decision_notes")
     .eq("tenant_id", tenantId)
@@ -283,16 +300,16 @@ export async function persistBooking(
     delete updateRow["decision_notes"];
   }
   const query = exists
-    ? db
+    ? activeDb
         .from("bookings")
         .update({ ...updateRow, archived_at: null })
         .eq("tenant_id", tenantId)
         .eq("id", booking.id)
-    : db.from("bookings").insert({ ...row, archived_at: null });
+    : activeDb.from("bookings").insert({ ...row, archived_at: null });
   const { data: saved, error } = await query.select("*").single();
   if (error) {
     if (error.code === "23505" || error.message?.includes("duplicate")) {
-      const { data: fallback, error: fbErr } = await db
+      const { data: fallback, error: fbErr } = await activeDb
         .from("bookings")
         .update({ ...updateRow, archived_at: null })
         .eq("tenant_id", tenantId)

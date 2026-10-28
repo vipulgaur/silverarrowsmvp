@@ -43,7 +43,13 @@ import {
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { bookingPending, canAccess, homeFor, memberNotifications } from "@/lib/logic";
+import {
+  bookingPending,
+  canAccess,
+  homeFor,
+  isUserPendingApproval,
+  memberNotifications,
+} from "@/lib/logic";
 import { useStore } from "@/lib/store";
 import { roleLabel, type Booking } from "@/lib/types";
 
@@ -165,6 +171,57 @@ function ShellLayout() {
     );
   }
 
+  if (isUserPendingApproval(me)) {
+    return (
+      <div className="min-h-screen bg-background text-foreground flex flex-col justify-between">
+        <header className="border-b border-border bg-background/95 px-6 py-3.5 backdrop-blur-md">
+          <div className="mx-auto flex max-w-7xl items-center justify-between">
+            <BrandLogo className="h-10 w-[140px]" />
+            <ThemeToggle />
+          </div>
+        </header>
+        <main className="mx-auto my-12 max-w-lg px-4 text-center">
+          <div className="rounded-3xl border border-amber-500/40 bg-amber-500/10 p-8 shadow-lg">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-500/20 text-amber-500 ring-1 ring-amber-500/40">
+              <Lock className="h-7 w-7" />
+            </div>
+            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-background/80 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
+              Live Database Sync Active
+            </div>
+            <h1 className="mt-3 text-2xl font-bold">Account Pending Administrator Approval</h1>
+            <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+              Welcome, <strong className="text-foreground">{me.name}</strong> ({me.email} ·{" "}
+              {roleLabel[me.role]}). Your account registration has been saved to the academy
+              database, and an administrator has been notified.
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+              Portal access is restricted until the Administrator approves your login. Keep this
+              page open — your dashboard will unlock automatically in real time the moment your
+              account is approved.
+            </p>
+            <div className="mt-6 flex flex-col gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  void signOut();
+                  void navigate({ to: "/login" });
+                }}
+              >
+                <LogOut className="mr-1.5 h-3.5 w-3.5" /> Sign Out &amp; Return to Login
+              </Button>
+            </div>
+          </div>
+        </main>
+        <footer className="border-t border-border py-4 text-center text-xs text-muted-foreground">
+          SilverArrows Flight Academy Security RBAC · Build{" "}
+          <span className="font-mono font-semibold text-foreground">{APP_BUILD_HASH}</span>
+        </footer>
+      </div>
+    );
+  }
+
   const path = location.pathname;
   const hasAccess = canAccess(me.role, path);
 
@@ -234,10 +291,12 @@ function ShellLayout() {
   const pendingFlightLogsForAdmin = data.flights.filter(
     (f) => f.verificationStatus === "pending",
   ).length;
+  const pendingAccountApprovals = data.users.filter((u) => isUserPendingApproval(u)).length;
   const adminPendingCount =
     data.requests.filter((r) => r.status === "pending").length +
     data.bookings.filter(bookingPending).length +
     data.profileRequests.filter((r) => r.status === "pending").length +
+    pendingAccountApprovals +
     pendingFlightLogsForAdmin +
     postFlightDueCount;
 

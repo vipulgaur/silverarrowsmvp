@@ -39,6 +39,7 @@ import { useLookup, useMe } from "@/lib/store";
 import { ProfileEditor } from "@/components/profile-editor";
 import { ProfileRequests } from "@/components/profile-requests";
 import { BookingApprovals } from "@/components/booking-approvals";
+import { AssignedCoursesPanel } from "@/components/assigned-courses-panel";
 import {
   getPostFlightDueBookings,
   PostFlightCompletionDialog,
@@ -47,7 +48,9 @@ import {
 } from "@/components/post-flight-prompt";
 import {
   aircraftUnavailable,
+  approveUserLogin,
   expiryState,
+  isUserPendingApproval,
   memberNotifications,
   restoreUser,
   reviewRequest,
@@ -110,6 +113,7 @@ function AdminPortal() {
   if (!me) return null;
 
   const active = data.users.filter((u) => u.status !== "deleted");
+  const pendingLoginUsers = active.filter((u) => isUserPendingApproval(u));
   const deleted = data.users.filter((u) => u.status === "deleted");
   const pending = data.requests.filter((r) => r.status === "pending");
   const feed = data.activity.filter((a) => !feedRole || a.actorRole === feedRole).slice(0, 12);
@@ -121,6 +125,19 @@ function AdminPortal() {
         (!q || `${u.name} ${u.email} ${u.callsign ?? ""}`.toLowerCase().includes(q.toLowerCase())),
     );
 
+  function approveLogin(uid: string) {
+    const u = lk.user(uid);
+    if (!u) return;
+    const err = commit(approveUserLogin(data, uid, me));
+    if (err) return void toast.error(err);
+    log(
+      "user_login_approved",
+      "user",
+      `Approved login access for ${u.name} (${u.email} · ${roleLabel[u.role]})`,
+      uid,
+    );
+    toast.success(`Approved login access for ${u.name} — synced to database in real time!`);
+  }
   function del(uid: string) {
     const u = lk.user(uid)!;
     if (!confirm(`Soft-delete ${u.name}? Their records are kept and they can be restored.`)) return;
@@ -179,6 +196,61 @@ function AdminPortal() {
       </PageHeader>
       <ProfileRequests review />
       <BookingApprovals />
+
+      {pendingLoginUsers.length > 0 && (
+        <Section
+          title={`Pending Account Login Approvals (${pendingLoginUsers.length})`}
+          description="New users who registered on the Login page. Approve their login access to immediately unlock their portal in real time."
+          className="mb-4 border-amber-500/40 bg-amber-500/5"
+        >
+          <div className="space-y-2.5">
+            {pendingLoginUsers.map((u) => (
+              <div
+                key={u.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/35 bg-card p-3.5 text-sm shadow-xs"
+              >
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-foreground">{u.name}</span>
+                    <Chip tone="soon">Pending Login Approval</Chip>
+                    <span className="rounded bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                      {roleLabel[u.role]}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Email: <strong className="text-foreground">{u.email}</strong>
+                    {u.phone ? (
+                      <>
+                        {" "}
+                        · Phone: <strong className="text-foreground">{u.phone}</strong>
+                      </>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => approveLogin(u.id)}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  >
+                    <CheckCircle2 className="mr-1.5 h-4 w-4" />
+                    Approve Login Access
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => del(u.id)}
+                    className="border-destructive/40 text-destructive hover:bg-destructive/10"
+                  >
+                    <XCircle className="mr-1.5 h-4 w-4" />
+                    Decline
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {quick.map(({ to, label, icon: Icon }) => (
@@ -343,7 +415,17 @@ function AdminPortal() {
                           </Button>
                         </>
                       )}
-                      {n.to && !booking && (
+                      {n.id.startsWith("accountapproval:") && (
+                        <Button
+                          size="sm"
+                          onClick={() => approveLogin(n.id.replace("accountapproval:", ""))}
+                          className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white px-2.5"
+                        >
+                          <CheckCircle2 className="mr-1 h-3 w-3" />
+                          Approve Login Access
+                        </Button>
+                      )}
+                      {n.to && !booking && !n.id.startsWith("accountapproval:") && (
                         <Button asChild size="sm" variant="outline" className="h-7 text-[11px] px-2.5">
                           <Link to={n.to as never}>View Details →</Link>
                         </Button>
@@ -502,10 +584,23 @@ function AdminPortal() {
                       <TableCell>{roleLabel[u.role]}</TableCell>
                       <TableCell>{medChip(u.medicalExpiry)}</TableCell>
                       <TableCell>
-                        <Chip tone="ok">Active</Chip>
+                        {isUserPendingApproval(u) ? (
+                          <Chip tone="soon">Pending Login Approval</Chip>
+                        ) : (
+                          <Chip tone="ok">Active</Chip>
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex flex-wrap justify-end gap-2">
+                          {isUserPendingApproval(u) && (
+                            <Button
+                              size="sm"
+                              onClick={() => approveLogin(u.id)}
+                              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                            >
+                              <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Approve Login
+                            </Button>
+                          )}
                           <Button asChild size="sm" variant="outline">
                             <Link
                               to={profileLink.to}
@@ -625,6 +720,9 @@ function AdminPortal() {
           </TableBody>
         </Table>
       </Section>
+
+      {/* Admin Portal E-Learning Course Assignment & Management */}
+      <AssignedCoursesPanel person={me} />
 
       <PostFlightCompletionDialog
         state={postFlightDialogState}
