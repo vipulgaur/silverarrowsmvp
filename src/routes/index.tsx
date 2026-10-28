@@ -5,6 +5,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import { HomepageAviationSequence } from "@/components/homepage-aviation-sequence";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { APP_BUILD_HASH } from "@/lib/build-info";
 
 const TOP_BAR_LINKS = [
   {
@@ -397,10 +398,20 @@ function MinimalLandingPage() {
 
       {/* Minimal Footer */}
       <footer className="border-t border-border bg-card/20 px-6 py-4 text-xs text-muted-foreground">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4">
-          <BrandLogo className="h-8" />
+        <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <BrandLogo className="h-8" />
+            <span
+              data-testid="landing-build-badge"
+              className="inline-flex items-center rounded-md border border-border/80 bg-muted/60 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-foreground"
+            >
+              Build #{APP_BUILD_HASH}
+            </span>
+          </div>
           <p className="text-right font-medium text-muted-foreground">
-            &copy; SA Flight Academy OS. Rights Reserved.
+            &copy; SA Flight Academy OS · Build{" "}
+            <span className="font-mono font-semibold text-foreground">{APP_BUILD_HASH}</span> ·
+            Rights Reserved.
           </p>
         </div>
       </footer>

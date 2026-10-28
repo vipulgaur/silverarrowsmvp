@@ -1,7 +1,9 @@
 node_modules
 .output
 dist
-.git
+.git/objects
+.git/logs
+.git/hooks
 .gitignore
 .env
 .env.local

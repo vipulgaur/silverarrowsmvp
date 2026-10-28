@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState, type ElementType } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ElementType } from "react";
 import { toast } from "sonner";
+import { APP_BUILD_HASH } from "@/lib/build-info";
 import { playNotificationSound } from "@/lib/notification-sound";
 import {
   AlertCircle,
@@ -85,6 +86,54 @@ function ShellLayout() {
   const [postFlightDecision, setPostFlightDecision] = useState<"yes" | "no">("yes");
   const [priorityFilter, setPriorityFilter] = useState<"all" | "critical" | "medium" | "low">("all");
 
+  const notifs = useMemo(() => (me ? memberNotifications(data, me) : []), [data, me]);
+
+  const markOneRead = useCallback(
+    (id: string) => {
+      if (!me) return;
+      update((d) => {
+        const prev = d.readNotificationIds[me.id] ?? [];
+        return {
+          ...d,
+          readNotificationIds: {
+            ...d.readNotificationIds,
+            [me.id]: prev.includes(id) ? prev : [...prev, id],
+          },
+        };
+      });
+    },
+    [me, update],
+  );
+
+  // Play audio chime and trigger pop-up alert when new notifications arrive in real time
+  const prevUnreadIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!hydrated || !me) return;
+    const currentUnread = notifs.filter((n) => !n.read);
+    const currentIds = new Set(currentUnread.map((n) => n.id));
+
+    if (prevUnreadIdsRef.current !== null) {
+      const brandNew = currentUnread.filter((n) => !prevUnreadIdsRef.current!.has(n.id));
+      if (brandNew.length > 0) {
+        playNotificationSound();
+        const top = brandNew[0];
+        toast(top.title, {
+          description: top.detail,
+          action: top.to
+            ? {
+                label: "View",
+                onClick: () => {
+                  markOneRead(top.id);
+                  void navigate({ to: top.to as never });
+                },
+              }
+            : undefined,
+        });
+      }
+    }
+    prevUnreadIdsRef.current = currentIds;
+  }, [hydrated, notifs, me, navigate, markOneRead]);
+
   if (!hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -108,6 +157,9 @@ function ShellLayout() {
           <Button asChild className="mt-6 w-full">
             <Link to="/login">Sign In to SilverArrows</Link>
           </Button>
+          <p className="mt-4 font-mono text-[11px] text-muted-foreground">
+            Build #{APP_BUILD_HASH}
+          </p>
         </div>
       </div>
     );
@@ -150,13 +202,12 @@ function ShellLayout() {
           </div>
         </main>
         <footer className="border-t border-border py-4 text-center text-xs text-muted-foreground">
-          SilverArrows Flight Academy Security RBAC
+          SilverArrows Flight Academy Security RBAC · Build <span className="font-mono font-semibold text-foreground">{APP_BUILD_HASH}</span>
         </footer>
       </div>
     );
   }
 
-  const notifs = memberNotifications(data, me);
   const unreadCount = notifs.filter((n) => !n.read).length;
 
   const criticalNotifsCount = notifs.filter((n) => n.priority === "critical").length;
@@ -177,48 +228,6 @@ function ShellLayout() {
       },
     }));
   };
-
-  const markOneRead = (id: string) => {
-    update((d) => {
-      const prev = d.readNotificationIds[me.id] ?? [];
-      return {
-        ...d,
-        readNotificationIds: {
-          ...d.readNotificationIds,
-          [me.id]: prev.includes(id) ? prev : [...prev, id],
-        },
-      };
-    });
-  };
-
-  // Play audio chime and trigger pop-up alert when new notifications arrive in real time
-  const prevUnreadIdsRef = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    if (!me) return;
-    const currentUnread = notifs.filter((n) => !n.read);
-    const currentIds = new Set(currentUnread.map((n) => n.id));
-
-    if (prevUnreadIdsRef.current !== null) {
-      const brandNew = currentUnread.filter((n) => !prevUnreadIdsRef.current!.has(n.id));
-      if (brandNew.length > 0) {
-        playNotificationSound();
-        const top = brandNew[0];
-        toast(top.title, {
-          description: top.detail,
-          action: top.to
-            ? {
-                label: "View",
-                onClick: () => {
-                  markOneRead(top.id);
-                  void navigate({ to: top.to as never });
-                },
-              }
-            : undefined,
-        });
-      }
-    }
-    prevUnreadIdsRef.current = currentIds;
-  }, [notifs, me, navigate]);
 
   // Live pending-count badge calculations (Section 1.4)
   const postFlightDueCount = me.role === "admin" ? getPostFlightDueBookings(data).length : 0;
@@ -977,10 +986,20 @@ function ShellLayout() {
 
       {/* Footer */}
       <footer className="border-t border-border bg-card/20 px-6 py-4 text-xs text-muted-foreground">
-        <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4">
-          <BrandLogo className="h-8" />
+        <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <BrandLogo className="h-8" />
+            <span
+              data-testid="app-build-badge"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-muted/60 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-foreground"
+            >
+              Build #{APP_BUILD_HASH}
+            </span>
+          </div>
           <p className="text-right font-medium text-muted-foreground">
-            &copy; SA Flight Academy OS. Rights Reserved.
+            &copy; SA Flight Academy OS · Build{" "}
+            <span className="font-mono font-semibold text-foreground">{APP_BUILD_HASH}</span> ·
+            Rights Reserved.
           </p>
         </div>
       </footer>

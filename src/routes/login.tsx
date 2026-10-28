@@ -21,6 +21,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { APP_BUILD_HASH } from "@/lib/build-info";
 import { useStore } from "@/lib/store";
 import { roleLabel, type Role } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -1988,13 +1989,21 @@ function LoginPage() {
       {/* Glassmorphic Footer */}
       <footer className="relative z-10 border-t border-border/80 bg-background/80 px-6 py-4 text-xs text-muted-foreground backdrop-blur-md">
         <div className="mx-auto flex w-full max-w-[1500px] flex-col items-center justify-between gap-3 sm:flex-row">
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <BrandLogo className="h-7 w-[100px]" />
             <span className="text-border">|</span>
             <span className="font-mono text-[11px]">SilverArrows Flight Operations OS</span>
+            <span
+              data-testid="login-build-badge"
+              className="inline-flex items-center rounded-md border border-border/80 bg-muted/60 px-2 py-0.5 font-mono text-[11px] font-semibold text-foreground"
+            >
+              Build #{APP_BUILD_HASH}
+            </span>
           </div>
           <p className="text-center font-medium sm:text-right">
-            &copy; {new Date().getFullYear()} SilverArrows Flight Academy. Regulatory Audit Compliant.
+            &copy; {new Date().getFullYear()} SilverArrows Flight Academy · Build{" "}
+            <span className="font-mono font-semibold text-foreground">{APP_BUILD_HASH}</span> ·
+            Regulatory Audit Compliant.
           </p>
         </div>
       </footer>
