@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Award,
+  Clock,
   Eye,
   EyeOff,
   Fuel,
@@ -1395,13 +1396,19 @@ function LoginPage() {
 
   // Live validation feedback during account creation:
   // ONLY triggers when username ({username}@flysilverarrows.com) or phone number matches an existing record.
-  // Never triggers when entering first name or last name.
+  // Never triggers when entering first name or last name. Never triggers against the current active session.
   const liveSignupError = useMemo(() => {
-    if (mode !== "signup") return null;
+    if (mode !== "signup" || (hydrated && me)) return null;
     const uname = extractEmailUsername(signupUsername);
     const rawPhoneDigits = phone.replace(/[^\d]/g, "");
     const formattedPhone = rawPhoneDigits ? formatPhoneWithIsd(signupIsdCode, phone) : "";
     if (!uname && rawPhoneDigits.length < 7) return null;
+
+    const activeUsersWithoutMe = data.users.filter(
+      (u) =>
+        u.status !== "deleted" &&
+        (!me || (u.id !== me.id && u.email.toLowerCase() !== me.email.toLowerCase())),
+    );
 
     return validateLiveUsernameAndPhone(
       {
@@ -1409,9 +1416,9 @@ function LoginPage() {
         email: uname ? formatAcademyEmail(uname) : "",
         phone: rawPhoneDigits.length >= 7 ? formattedPhone : "",
       },
-      data.users,
+      activeUsersWithoutMe,
     );
-  }, [mode, signupUsername, signupIsdCode, phone, data.users]);
+  }, [mode, hydrated, me, signupUsername, signupIsdCode, phone, data.users]);
 
   // Handle Form Submission (Sign In or Create Account)
   async function submitAuth(e: FormEvent) {
@@ -1536,12 +1543,33 @@ function LoginPage() {
       return;
     }
 
+    // Reset registration inputs immediately to prevent duplicate validation conflict
+    setFirstName("");
+    setLastName("");
+    setSignupUsername("");
+    setPhone("");
+    setPassword("");
+    setVerify("");
+
     await reload();
     setBusy(false);
     toast.success(
       "Account registered in database! Access will unlock automatically as soon as the Administrator approves your login.",
     );
   }
+
+  const handleSignOut = async () => {
+    setFirstName("");
+    setLastName("");
+    setSignupUsername("");
+    setPhone("");
+    setPassword("");
+    setVerify("");
+    setEmail("");
+    setSelectedPersonaId("");
+    setMode("signin");
+    await signOut();
+  };
 
   return (
     <div className="relative min-h-screen w-full overflow-x-hidden bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary flex flex-col justify-between">
@@ -1579,6 +1607,7 @@ function LoginPage() {
           data-testid="auth-console-section"
         >
           {/* Header & Mode Switcher Segmented Control */}
+          {/* Header & Mode Switcher Segmented Control */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-border/70 pb-5">
             <div className="space-y-1 text-left">
               <div className="flex items-center gap-2">
@@ -1588,119 +1617,186 @@ function LoginPage() {
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary dark:text-sky-400">
-                {mode === "signin" ? "Portal Sign In" : "Register Profile"}
+                {hydrated && me
+                  ? isUserPendingApproval(me)
+                    ? "Approval Pending"
+                    : "Active Session"
+                  : mode === "signin"
+                    ? "Portal Sign In"
+                    : "Register Profile"}
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground font-medium">
-                {mode === "signin"
-                  ? "Sign in to access your flight operations, syllabus, and logbooks."
-                  : "Create a new member entry in the local academy database."}
+                {hydrated && me
+                  ? isUserPendingApproval(me)
+                    ? "Your account registration has been saved to the database and is awaiting Administrator approval."
+                    : `Currently signed in as ${me.name} (${roleLabel[me.role]}).`
+                  : mode === "signin"
+                    ? "Sign in to access your flight operations, syllabus, and logbooks."
+                    : "Create a new member entry in the local academy database."}
               </p>
             </div>
 
-            {/* Smooth Mode Switcher Pill Control */}
-            <div
-              className="relative flex items-center rounded-full border border-border/80 bg-muted/60 p-1 shadow-inner backdrop-blur-md self-start sm:self-center shrink-0"
-              role="tablist"
-              aria-label="Authentication modes"
-            >
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === "signin"}
-                data-testid="mode-tab-signin"
-                onClick={() => setMode("signin")}
-                className={`relative z-10 flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all duration-300 ${
-                  mode === "signin"
-                    ? "bg-primary text-primary-foreground shadow-md scale-[1.02]"
-                    : "text-muted-foreground hover:text-foreground hover:bg-background/40"
-                }`}
+            {/* Smooth Mode Switcher Pill Control (ONLY shown when NOT signed in) */}
+            {(!hydrated || !me) && (
+              <div
+                className="relative flex items-center rounded-full border border-border/80 bg-muted/60 p-1 shadow-inner backdrop-blur-md self-start sm:self-center shrink-0"
+                role="tablist"
+                aria-label="Authentication modes"
               >
-                <Lock className="h-3.5 w-3.5" />
-                <span>Sign In</span>
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={mode === "signup"}
-                data-testid="mode-tab-signup"
-                onClick={() => setMode("signup")}
-                className={`relative z-10 flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all duration-300 ${
-                  mode === "signup"
-                    ? "bg-primary text-primary-foreground shadow-md scale-[1.02]"
-                    : "text-muted-foreground hover:text-foreground hover:bg-background/40"
-                }`}
-              >
-                <UserPlus className="h-3.5 w-3.5" />
-                <span>Register</span>
-              </button>
-            </div>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === "signin"}
+                  data-testid="mode-tab-signin"
+                  onClick={() => setMode("signin")}
+                  className={`relative z-10 flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all duration-300 ${
+                    mode === "signin"
+                      ? "bg-primary text-primary-foreground shadow-md scale-[1.02]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+                  }`}
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  <span>Sign In</span>
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === "signup"}
+                  data-testid="mode-tab-signup"
+                  onClick={() => setMode("signup")}
+                  className={`relative z-10 flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition-all duration-300 ${
+                    mode === "signup"
+                      ? "bg-primary text-primary-foreground shadow-md scale-[1.02]"
+                      : "text-muted-foreground hover:text-foreground hover:bg-background/40"
+                  }`}
+                >
+                  <UserPlus className="h-3.5 w-3.5" />
+                  <span>Register</span>
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Active Session Card (if user is currently logged in) */}
-          {hydrated && me && (
-            <div
-              className={`my-4 rounded-2xl border p-4 text-xs ${
-                isUserPendingApproval(me)
-                  ? "border-amber-500/50 bg-amber-500/10"
-                  : "border-primary/40 bg-primary/10"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`flex h-7 w-7 items-center justify-center rounded-full font-mono text-[11px] font-bold ${
-                      isUserPendingApproval(me)
-                        ? "bg-amber-500 text-slate-950"
-                        : "bg-primary text-primary-foreground"
-                    }`}
-                  >
-                    {me.name.slice(0, 2).toUpperCase()}
-                  </span>
-                  <div>
-                    <div className="font-semibold text-foreground">{me.name}</div>
-                    <div className="font-mono text-[10px] text-muted-foreground">
-                      {me.email} · {roleLabel[me.role]}
+          {/* Condition 1: User is logged in and awaiting administrator approval */}
+          {hydrated && me && isUserPendingApproval(me) ? (
+            <div className="my-auto py-4 space-y-5 animate-in fade-in duration-300">
+              <div className="rounded-3xl border border-amber-500/50 bg-amber-500/10 p-6 sm:p-8 text-center space-y-4 shadow-lg backdrop-blur-xl">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 shadow-inner">
+                  <Clock className="h-8 w-8 animate-pulse" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-background/80 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 shadow-xs">
+                    <span className="h-2 w-2 rounded-full bg-amber-500 animate-ping" />
+                    <span>Account Pending Administrator Login Approval</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-foreground">
+                    Access Locked Until Administrator Approval
+                  </h2>
+                  <p className="text-xs sm:text-sm text-muted-foreground max-w-lg mx-auto leading-relaxed">
+                    Your account has been created in the database. Portal access is locked until the
+                    Administrator approves your login. Keep this screen open — your portal will unlock
+                    automatically in real time as soon as approved.
+                  </p>
+                </div>
+
+                {/* Registered Member Details */}
+                <div className="mx-auto max-w-md rounded-2xl border border-border/80 bg-background/90 p-4 text-left shadow-xs">
+                  <div className="flex items-center justify-between border-b border-border/60 pb-3">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-slate-950 font-mono font-bold text-sm shadow-xs">
+                        {me.name.slice(0, 2).toUpperCase()}
+                      </span>
+                      <div>
+                        <div className="font-bold text-sm text-foreground">{me.name}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{me.email}</div>
+                      </div>
+                    </div>
+                    <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                      {roleLabel[me.role]}
+                    </span>
+                  </div>
+
+                  <div className="pt-3 grid grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-muted-foreground">Registered Phone: </span>
+                      <span className="font-medium text-foreground">{me.phone || "—"}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-muted-foreground">Status: </span>
+                      <span className="font-bold text-amber-600 dark:text-amber-400">
+                        Awaiting Review
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs border-primary/30"
-                  onClick={() => void signOut()}
-                >
-                  <LogOut className="mr-1 h-3 w-3" /> Sign out
-                </Button>
-              </div>
+                {/* Live Sync Status */}
+                <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground pt-1">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>Live database sync active · Listening for approval from admin@flysilverarrows.com</span>
+                </div>
 
-              {isUserPendingApproval(me) ? (
-                <div className="mt-3 rounded-xl border border-amber-500/40 bg-background/80 p-3 text-left">
-                  <div className="flex items-center gap-2 font-bold text-amber-600 dark:text-amber-400">
-                    <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse" />
-                    <span>Account Pending Administrator Login Approval</span>
-                  </div>
-                  <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
-                    Your account has been created in the database. Portal access is locked until the
-                    Administrator approves your login. Keep this screen open — your portal will
-                    unlock automatically in real time as soon as approved.
+                {/* Actions */}
+                <div className="pt-3 flex flex-wrap items-center justify-center gap-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void reload()}
+                    className="text-xs font-semibold gap-1.5"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" /> Check Approval Status
+                  </Button>
+
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleSignOut}
+                    className="text-xs font-semibold gap-1.5"
+                  >
+                    <LogOut className="h-3.5 w-3.5" /> Sign Out / Switch Account
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : hydrated && me ? (
+            /* Condition 2: User is already signed in and approved */
+            <div className="my-auto py-8 space-y-6 animate-in fade-in duration-300">
+              <div className="rounded-3xl border border-primary/40 bg-primary/10 p-6 sm:p-8 text-center space-y-4 shadow-lg backdrop-blur-xl">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/20 text-primary border border-primary/30 shadow-inner">
+                  <Plane className="h-8 w-8 text-primary" />
+                </div>
+                <div className="space-y-1">
+                  <h2 className="text-xl sm:text-2xl font-black text-foreground">
+                    Signed in as {me.name}
+                  </h2>
+                  <p className="text-xs sm:text-sm text-muted-foreground font-mono">
+                    {me.email} · {roleLabel[me.role]}
                   </p>
                 </div>
-              ) : (
-                <Button
-                  type="button"
-                  size="sm"
-                  className="mt-3 w-full text-xs font-semibold shadow-xs"
-                  onClick={() => void navigate({ to: "/dashboard" })}
-                >
-                  <Plane className="mr-1.5 h-3.5 w-3.5" /> Continue to Dashboard
-                </Button>
-              )}
+                <div className="pt-3 flex flex-col sm:flex-row items-center justify-center gap-3 max-w-sm mx-auto">
+                  <Button
+                    type="button"
+                    className="w-full text-xs font-bold gap-2"
+                    onClick={() => void navigate({ to: "/dashboard" })}
+                  >
+                    <Plane className="h-4 w-4" /> Enter Operations Portal
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full text-xs font-semibold gap-2"
+                    onClick={handleSignOut}
+                  >
+                    <LogOut className="h-4 w-4" /> Sign out
+                  </Button>
+                </div>
+              </div>
             </div>
-          )}
-
-          {noAccess ? (
+          ) : noAccess ? (
+            /* Condition 3: Unlinked member profile */
             <div className="my-6 rounded-2xl border border-destructive/30 bg-destructive/10 p-5 text-xs">
               <div className="flex items-center gap-2 text-destructive font-semibold">
                 <ShieldAlert className="h-4 w-4" />
@@ -1714,12 +1810,13 @@ function LoginPage() {
                 variant="outline"
                 size="sm"
                 className="mt-4"
-                onClick={() => void signOut()}
+                onClick={handleSignOut}
               >
                 <LogOut className="mr-1.5 h-3.5 w-3.5" /> Sign out
               </Button>
             </div>
           ) : (
+            /* Condition 4: Guest visitor (Sign In or Register) */
             <form onSubmit={submitAuth} className="mt-6 flex-1 flex flex-col justify-between">
               {/* ────────────────────── MODE A: SIGN IN (BALANCED 2-COLUMN LANDSCAPE) ────────────────────── */}
               {mode === "signin" && (

@@ -67,6 +67,21 @@ interface Store {
 
 const Ctx = createContext<Store | null>(null);
 
+const ACTIVE_USER_SESSION_KEY = "silverarrows_active_member_session";
+
+function getCachedActiveSession(): { id: string; email: string } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(ACTIVE_USER_SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.id === "string") return parsed;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(() => {
     const initial = readDemoData().data;
@@ -75,9 +90,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return merged;
   });
 
-  const [meId, setMeId] = useState<string | null>(null);
+  const [meId, setMeId] = useState<string | null>(() => {
+    const demoSession = getStoredDemoSession();
+    if (demoSession?.user?.id) {
+      return toAppMemberId(demoSession.user.id, demoSession.user.email);
+    }
+    const cached = getCachedActiveSession();
+    if (cached?.id) {
+      return cached.id;
+    }
+    return null;
+  });
+
   const [noAccess, setNoAccess] = useState(false);
-  const [hydrated, setHydrated] = useState(false);
+  const [hydrated, setHydrated] = useState<boolean>(() => {
+    // If local demo data and a known active user exist, start immediately hydrated to avoid screen flashing
+    if (typeof window === "undefined") return false;
+    const demoSession = getStoredDemoSession();
+    const cached = getCachedActiveSession();
+    return !!(demoSession?.user || cached?.id);
+  });
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
 
   const latest = useRef<AppData>(data);
@@ -85,6 +117,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const tenantIdRef = useRef<string | null>(null);
   const baselineRef = useRef<Tables | null>(null);
+  const isSyncingRef = useRef(false);
 
   const applyAndSync = useCallback((next: AppData) => {
     const merged = mergeCourseAssignments(next);
@@ -107,102 +140,158 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const syncFromServerOrLocal = useCallback(async () => {
-    const demoSession = getStoredDemoSession();
+    if (isSyncingRef.current) return;
+    isSyncingRef.current = true;
 
-    // 1. In unit tests, resolve local demoSession synchronously without network
-    if (demoSession && isTestEnv) {
-      tenantIdRef.current = null;
-      setActiveTenantId(null);
-      baselineRef.current = null;
-      const sharedSnapshot = await fetchLocalSync();
-      const baseData = sharedSnapshot ?? readDemoData().data;
-      const fresh = mergeCourseAssignments(baseData);
-      writeDemoData(fresh);
-      latest.current = fresh;
-      setData(fresh);
-      setMeId(toAppMemberId(demoSession.user.id, demoSession.user.email));
-      setNoAccess(false);
-      setHydrated(true);
-      return;
-    }
+    try {
+      const demoSession = getStoredDemoSession();
 
-    // 2. Check real Supabase authenticated user OR active demoSession in browser
-    const { data: authData } = await supabase.auth.getUser();
-    const authUser = authData?.user ?? demoSession?.user ?? null;
-
-    if (authUser) {
-      try {
-        const loaded = await loadAcademy(authUser.id, authUser.email);
-        if (loaded) {
-          tenantIdRef.current = loaded.tenantId;
-          setActiveTenantId(loaded.tenantId);
-          const remoteTables = toTables(loaded.data, loaded.tenantId);
-          const pendingDiff = baselineRef.current
-            ? diffTables(baselineRef.current, toTables(latest.current, loaded.tenantId))
-            : null;
-          const reconciledTables =
-            pendingDiff && hasChanges(pendingDiff)
-              ? mergePending(remoteTables, pendingDiff)
-              : remoteTables;
-          baselineRef.current = reconciledTables;
-
-          const reconciledData = mergeCourseAssignments(
-            enrichWithSeedDefaults(fromTables(reconciledTables), latest.current),
-          );
-          writeStoredCourseAssignments(reconciledData.activity);
-          writeDemoData(reconciledData);
-          latest.current = reconciledData;
-          setData(reconciledData);
-          setMeId(toAppMemberId(loaded.meId, authUser.email));
-          setNoAccess(false);
-          setHydrated(true);
-          return;
-        }
-      } catch (err) {
-        console.warn("Failed to load academy from Supabase:", err);
-      }
-
-      // Graceful fallback if Supabase loadAcademy returns null or errors for an authenticated user
-      const fallbackData = mergeCourseAssignments(
-        enrichWithSeedDefaults(readDemoData().data, latest.current),
-      );
-      const emailLower = (authUser.email ?? "").trim().toLowerCase();
-      const canonicalId = toAppMemberId(authUser.id, emailLower);
-      const matchedUser =
-        fallbackData.users.find((u) => u.id === canonicalId && u.status !== "deleted") ??
-        fallbackData.users.find(
-          (u) => u.email.trim().toLowerCase() === emailLower && u.status !== "deleted",
-        );
-
-      if (matchedUser) {
-        writeDemoData(fallbackData);
-        latest.current = fallbackData;
-        setData(fallbackData);
-        setMeId(matchedUser.id);
+      // 1. In unit tests, resolve local demoSession synchronously without network
+      if (demoSession && isTestEnv) {
+        tenantIdRef.current = null;
+        setActiveTenantId(null);
+        baselineRef.current = null;
+        const sharedSnapshot = await fetchLocalSync();
+        const baseData = sharedSnapshot ?? readDemoData().data;
+        const fresh = mergeCourseAssignments(baseData);
+        writeDemoData(fresh);
+        latest.current = fresh;
+        setData(fresh);
+        setMeId(toAppMemberId(demoSession.user.id, demoSession.user.email));
         setNoAccess(false);
         setHydrated(true);
         return;
       }
-    }
 
-    tenantIdRef.current = null;
-    setActiveTenantId(null);
-    baselineRef.current = null;
-    setMeId(null);
-    setNoAccess(false);
-    setHydrated(true);
+      // 2. Check cached local session first (instant, non-blocking)
+      const { data: sessionData } = await supabase.auth.getSession();
+      const sessionUser = sessionData?.session?.user ?? null;
+      let authUser = sessionUser ?? demoSession?.user ?? null;
+
+      if (!authUser) {
+        try {
+          const { data: authData } = await supabase.auth.getUser();
+          if (authData?.user) {
+            authUser = authData.user;
+          }
+        } catch {
+          /* transient network failure */
+        }
+      }
+
+      if (authUser) {
+        try {
+          const loaded = await loadAcademy(authUser.id, authUser.email);
+          if (loaded) {
+            tenantIdRef.current = loaded.tenantId;
+            setActiveTenantId(loaded.tenantId);
+            const remoteTables = toTables(loaded.data, loaded.tenantId);
+            const pendingDiff = baselineRef.current
+              ? diffTables(baselineRef.current, toTables(latest.current, loaded.tenantId))
+              : null;
+            const reconciledTables =
+              pendingDiff && hasChanges(pendingDiff)
+                ? mergePending(remoteTables, pendingDiff)
+                : remoteTables;
+            baselineRef.current = reconciledTables;
+
+            const reconciledData = mergeCourseAssignments(
+              enrichWithSeedDefaults(fromTables(reconciledTables), latest.current),
+            );
+            writeStoredCourseAssignments(reconciledData.activity);
+            writeDemoData(reconciledData);
+            latest.current = reconciledData;
+            setData(reconciledData);
+
+            const canonicalMeId = toAppMemberId(loaded.meId, authUser.email);
+            setMeId(canonicalMeId);
+            if (typeof window !== "undefined") {
+              try {
+                window.localStorage.setItem(
+                  ACTIVE_USER_SESSION_KEY,
+                  JSON.stringify({ id: canonicalMeId, email: authUser.email }),
+                );
+              } catch {}
+            }
+            setNoAccess(false);
+            setHydrated(true);
+            return;
+          }
+        } catch (err) {
+          console.warn("Failed to load academy from Supabase:", err);
+        }
+
+        // Graceful fallback if Supabase loadAcademy returns null or errors for an authenticated user
+        const fallbackData = mergeCourseAssignments(
+          enrichWithSeedDefaults(readDemoData().data, latest.current),
+        );
+        const emailLower = (authUser.email ?? "").trim().toLowerCase();
+        const canonicalId = toAppMemberId(authUser.id, emailLower);
+        const matchedUser =
+          fallbackData.users.find((u) => u.id === canonicalId && u.status !== "deleted") ??
+          fallbackData.users.find(
+            (u) => u.email.trim().toLowerCase() === emailLower && u.status !== "deleted",
+          );
+
+        if (matchedUser) {
+          writeDemoData(fallbackData);
+          latest.current = fallbackData;
+          setData(fallbackData);
+          setMeId(matchedUser.id);
+          if (typeof window !== "undefined") {
+            try {
+              window.localStorage.setItem(
+                ACTIVE_USER_SESSION_KEY,
+                JSON.stringify({ id: matchedUser.id, email: authUser.email }),
+              );
+            } catch {}
+          }
+          setNoAccess(false);
+          setHydrated(true);
+          return;
+        }
+      }
+
+      // Check if we already have an active known session in cache before dropping session
+      const cached = getCachedActiveSession();
+      if (
+        cached?.id &&
+        latest.current.users.some((u) => u.id === cached.id && u.status !== "deleted")
+      ) {
+        setMeId(cached.id);
+        setNoAccess(false);
+        setHydrated(true);
+        return;
+      }
+
+      // Truly unauthenticated (e.g. fresh visitor on login page)
+      tenantIdRef.current = null;
+      setActiveTenantId(null);
+      baselineRef.current = null;
+      setMeId(null);
+      setNoAccess(false);
+      setHydrated(true);
+    } finally {
+      isSyncingRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
     void syncFromServerOrLocal();
 
-    const sub = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session?.user) {
+    const sub = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT") {
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.removeItem(ACTIVE_USER_SESSION_KEY);
+          } catch {}
+        }
         tenantIdRef.current = null;
+        setActiveTenantId(null);
         baselineRef.current = null;
         setMeId(null);
         setNoAccess(false);
-      } else {
+      } else if (session?.user) {
         void syncFromServerOrLocal();
       }
     });
@@ -256,10 +345,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       )
       .subscribe();
 
-    // 4-second fallback interval ensures cross-device sync even if WebSockets reconnect or are throttled
+    // 15-second heartbeat interval keeps data fresh without hammering auth or dropping sessions
     const interval = setInterval(() => {
       void syncFromServerOrLocal();
-    }, 4000);
+    }, 15000);
 
     const onVisibleOrFocus = () => {
       if (document.visibilityState === "visible") {
@@ -483,6 +572,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       me,
       noAccess,
       signOut: async () => {
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.removeItem(ACTIVE_USER_SESSION_KEY);
+          } catch {}
+        }
         tenantIdRef.current = null;
         setActiveTenantId(null);
         baselineRef.current = null;

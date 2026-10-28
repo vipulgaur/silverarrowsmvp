@@ -51,7 +51,16 @@ export function createRouter() {
   if (typeof window !== "undefined") {
     window.addEventListener("vite:preloadError", (event) => {
       event.preventDefault();
-      window.location.reload();
+      const reloadKey = "sa-vite-preload-reload";
+      try {
+        const last = Number(window.sessionStorage.getItem(reloadKey) ?? "0");
+        if (Date.now() - last > 10000) {
+          window.sessionStorage.setItem(reloadKey, String(Date.now()));
+          window.location.reload();
+        }
+      } catch {
+        /* ignore storage error */
+      }
     });
   }
 

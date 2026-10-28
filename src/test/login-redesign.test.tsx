@@ -17,7 +17,8 @@ vi.mock("@tanstack/react-router", async () => {
 import { Route } from "@/routes/login";
 import { FIXED_TESTING_PASSWORD, TESTING_USERS } from "@/routes/login";
 import { StoreProvider } from "@/lib/store";
-import { readDemoData } from "@/lib/demo-storage";
+import { readDemoData, writeDemoData } from "@/lib/demo-storage";
+import { setStoredDemoSession } from "@/integrations/supabase/client";
 
 function renderLoginPage() {
   const Component = Route.options.component!;
@@ -260,5 +261,53 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
     expect(container.innerHTML).toContain("FLIGHT SCOUT · C172S");
     expect(container.innerHTML).toContain("FUEL RESERVE");
     expect(container.innerHTML).toContain("STUDENT PILOT");
+  });
+
+  it("displays ONLY the Account Pending Administrator Login Approval card when user is pending approval and hides registration form and error alerts", () => {
+    // Seed a pending approval user
+    setStoredDemoSession({
+      user: {
+        id: "u-pending-vikram",
+        email: "vikram@flysilverarrows.com",
+        user_metadata: { role: "student" },
+      },
+      isDemoFallback: true,
+    });
+
+    const demo = readDemoData().data;
+    const pendingVikram = {
+      id: "u-pending-vikram",
+      name: "Vikram Gaur",
+      email: "vikram@flysilverarrows.com",
+      role: "student" as const,
+      status: "active" as const,
+      statusReason: "PENDING_ADMIN_APPROVAL",
+      phone: "+91 8989897889",
+    };
+    writeDemoData({
+      ...demo,
+      users: [...demo.users.filter((u) => u.email !== "vikram@flysilverarrows.com"), pendingVikram],
+    });
+
+    const { container } = renderLoginPage();
+
+    // 1. Must show "Account Pending Administrator Login Approval"
+    expect(
+      screen.getByText("Account Pending Administrator Login Approval"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("Access Locked Until Administrator Approval"),
+    ).toBeTruthy();
+    expect(screen.getByText("Vikram Gaur")).toBeTruthy();
+
+    // 2. Must NOT show the duplicate "Account Validation Restricted" banner
+    expect(screen.queryByTestId("signup-validation-alert")).toBeNull();
+    expect(screen.queryByText(/Account Validation Restricted/i)).toBeNull();
+
+    // 3. Must NOT render the registration form inputs
+    expect(container.querySelector("#firstName")).toBeNull();
+    expect(container.querySelector("#lastName")).toBeNull();
+    expect(container.querySelector("#signupEmail")).toBeNull();
+    expect(container.querySelector("#signupPhone")).toBeNull();
   });
 });
