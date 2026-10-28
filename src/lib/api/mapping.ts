@@ -328,7 +328,7 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
     }
   }
 
-  const users: User[] = (tables.tenant_members ?? []).map((m) => {
+  const rawUsers: User[] = (tables.tenant_members ?? []).map((m) => {
     const id = String(m.id);
     const mc = num(m.medical_class);
     return {
@@ -392,6 +392,27 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
       ...(str(m.photo_url) ? { photoUrl: str(m.photo_url)! } : {}),
     };
   });
+
+  // Deduplicate users by normalized email, consolidating to one primary canonical account per person
+  const userByEmail = new Map<string, User>();
+  for (const u of rawUsers) {
+    const key = u.email.trim().toLowerCase();
+    if (!key) continue;
+    const existing = userByEmail.get(key);
+    if (!existing) {
+      userByEmail.set(key, u);
+    } else {
+      // Keep active status, merge additional contact and licensing attributes
+      const active = existing.status === "active" ? existing : u.status === "active" ? u : existing;
+      userByEmail.set(key, {
+        ...existing,
+        ...u,
+        status: active.status,
+        phone: active.phone || existing.phone || u.phone,
+      });
+    }
+  }
+  const users: User[] = Array.from(userByEmail.values());
 
   const aircraft: Aircraft[] = (tables.aircraft ?? []).map((a) => ({
     id: String(a.id),
@@ -647,6 +668,17 @@ function stableRowJson(row: Record<string, unknown>): string {
   return JSON.stringify(Object.fromEntries(entries));
 }
 
+const NON_ARCHIVABLE_TABLES = new Set<TableName>([
+  "tenant_members",
+  "member_roles",
+  "programs",
+  "program_lessons",
+  "aircraft",
+  "theory_subjects",
+  "classrooms",
+  "activity_feed",
+]);
+
 export function diffTables(prev: Tables, next: Tables): Changes {
   const upserts: Partial<Record<TableName, Record<string, unknown>[]>> = {};
   const archives: Partial<Record<TableName, string[]>> = {};
@@ -656,9 +688,11 @@ export function diffTables(prev: Tables, next: Tables): Changes {
     const nextMap = new Map(next[t].map((r) => [String(r.id), r]));
 
     const removedIds: string[] = [];
-    for (const id of prevMap.keys()) {
-      if (!nextMap.has(id) && t !== "activity_feed") {
-        removedIds.push(id);
+    if (!NON_ARCHIVABLE_TABLES.has(t)) {
+      for (const id of prevMap.keys()) {
+        if (!nextMap.has(id)) {
+          removedIds.push(id);
+        }
       }
     }
     if (removedIds.length > 0) archives[t] = removedIds;

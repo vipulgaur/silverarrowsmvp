@@ -235,8 +235,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       )
       .subscribe();
 
+    // 4-second fallback interval ensures cross-device sync even if WebSockets reconnect or are throttled
+    const interval = setInterval(() => {
+      void syncFromServerOrLocal();
+    }, 4000);
+
+    const onVisibleOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        void syncFromServerOrLocal();
+      }
+    };
+    window.addEventListener("visibilitychange", onVisibleOrFocus);
+    window.addEventListener("focus", onVisibleOrFocus);
+
     return () => {
       void supabase.removeChannel(channel);
+      clearInterval(interval);
+      window.removeEventListener("visibilitychange", onVisibleOrFocus);
+      window.removeEventListener("focus", onVisibleOrFocus);
     };
   }, [activeTenantId, syncFromServerOrLocal]);
 

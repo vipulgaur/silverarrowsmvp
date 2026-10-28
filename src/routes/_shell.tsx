@@ -1,6 +1,7 @@
 import { createFileRoute, Link, Outlet, useLocation, useNavigate } from "@tanstack/react-router";
-import { useState, type ElementType } from "react";
+import { useEffect, useRef, useState, type ElementType } from "react";
 import { toast } from "sonner";
+import { playNotificationSound } from "@/lib/notification-sound";
 import {
   AlertCircle,
   AlertTriangle,
@@ -189,6 +190,35 @@ function ShellLayout() {
       };
     });
   };
+
+  // Play audio chime and trigger pop-up alert when new notifications arrive in real time
+  const prevUnreadIdsRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!me) return;
+    const currentUnread = notifs.filter((n) => !n.read);
+    const currentIds = new Set(currentUnread.map((n) => n.id));
+
+    if (prevUnreadIdsRef.current !== null) {
+      const brandNew = currentUnread.filter((n) => !prevUnreadIdsRef.current!.has(n.id));
+      if (brandNew.length > 0) {
+        playNotificationSound();
+        const top = brandNew[0];
+        toast(top.title, {
+          description: top.detail,
+          action: top.to
+            ? {
+                label: "View",
+                onClick: () => {
+                  markOneRead(top.id);
+                  void navigate({ to: top.to as never });
+                },
+              }
+            : undefined,
+        });
+      }
+    }
+    prevUnreadIdsRef.current = currentIds;
+  }, [notifs, me, navigate]);
 
   // Live pending-count badge calculations (Section 1.4)
   const postFlightDueCount = me.role === "admin" ? getPostFlightDueBookings(data).length : 0;

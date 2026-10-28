@@ -1104,19 +1104,22 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
       category: "booking",
     }));
   const courseAssignments: AppNotification[] = data.activity
-    .filter(
-      (a) =>
-        (a.action === "course_assigned" || a.action === "course_unassigned") &&
-        a.entityId === me.id,
-    )
+    .filter((a) => {
+      if (a.action !== "course_assigned" && a.action !== "course_unassigned") return false;
+      if (a.entityId === me.id) return true;
+      const targetUser = data.users.find((u) => u.id === a.entityId);
+      if (targetUser && me.email && targetUser.email.toLowerCase() === me.email.toLowerCase()) return true;
+      if (me.name && a.details.toLowerCase().includes(me.name.toLowerCase())) return true;
+      return false;
+    })
     .map((a) => ({
       id: `course:${a.id}`,
-      title: a.action === "course_assigned" ? "New course assigned" : "Course unassigned",
+      title: a.action === "course_assigned" ? "New E-Learning course assigned" : "Course unassigned",
       detail: a.details,
       at: a.at,
-      to: "/profile",
+      to: "/elearning",
       status: a.action === "course_assigned" ? "approved" : "cancelled",
-      priority: "low",
+      priority: "medium",
       category: "course",
     }));
   const nowMs = Date.now();

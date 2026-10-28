@@ -297,7 +297,14 @@ export function courseIdFromDetails(details: string): CourseId | null {
 }
 
 /**Returns the list of CourseIds explicitly assigned to a specific user based on latest timeline action.*/
-export function assignedCourseIds(userId: string, data: Pick<AppData, "activity">): CourseId[] {
+export function assignedCourseIds(
+  userId: string,
+  data: Pick<AppData, "activity"> & { users?: User[] },
+): CourseId[] {
+  const targetUser = (data as AppData).users?.find((u) => u.id === userId);
+  const targetEmail = targetUser?.email?.trim().toLowerCase();
+  const targetName = targetUser?.name?.trim().toLowerCase();
+
   const rawList = [...(data?.activity ?? []), ...readStoredCourseAssignments()];
   const seen = new Set<string>();
   const events: ActivityLog[] = [];
@@ -305,7 +312,18 @@ export function assignedCourseIds(userId: string, data: Pick<AppData, "activity"
   for (const act of rawList) {
     if (!act || typeof act !== "object") continue;
     if (act.action !== "course_assigned" && act.action !== "course_unassigned") continue;
-    if (act.entityId !== userId) continue;
+
+    let matchesUser = act.entityId === userId;
+    if (!matchesUser && (data as AppData).users) {
+      const actUser = (data as AppData).users?.find((u) => u.id === act.entityId);
+      if (actUser && targetEmail && actUser.email?.trim().toLowerCase() === targetEmail) {
+        matchesUser = true;
+      } else if (targetName && act.details && act.details.toLowerCase().includes(targetName)) {
+        matchesUser = true;
+      }
+    }
+
+    if (!matchesUser) continue;
     const cid = courseIdFromDetails(act.details);
     if (!cid) continue;
 
@@ -354,8 +372,8 @@ export function assignedCourseIds(userId: string, data: Pick<AppData, "activity"
  * - All other roles (student, instructor, ground) ONLY see modules explicitly assigned to them.
  */
 export function accessibleModulesFor(
-  user: Pick<User, "id" | "role"> | null | undefined,
-  data: Pick<AppData, "activity">,
+  user: Pick<User, "id" | "role" | "name" | "email"> | null | undefined,
+  data: Pick<AppData, "activity"> & { users?: User[] },
 ): ELearningModule[] {
   if (!user) return [];
   if (user.role === "admin") return ELEARNING_MODULES;

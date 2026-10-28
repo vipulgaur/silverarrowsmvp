@@ -118,12 +118,24 @@ function AdminCreatePage() {
   function createUser(e: FormEvent) {
     e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
-    if (!name.trim() || !cleanEmail) {
-      toast.error("Name and email are required.");
+    const cleanPhone = phone.trim();
+    if (!name.trim() || !cleanEmail || !cleanPhone) {
+      toast.error("Full name, email address, and phone number are all required.");
       return;
     }
     if (data.users.some((u) => u.email.toLowerCase() === cleanEmail)) {
-      toast.error("A member with this email already exists.");
+      toast.error("A member with this email address already exists.");
+      return;
+    }
+    const normalizedPhone = cleanPhone.replace(/[\s\-().]/g, "");
+    if (
+      data.users.some(
+        (u) =>
+          u.phone &&
+          u.phone.replace(/[\s\-().]/g, "") === normalizedPhone,
+      )
+    ) {
+      toast.error("A member with this phone number already exists.");
       return;
     }
 
@@ -474,11 +486,13 @@ function AdminCreatePage() {
                       onChange={(e) => setCallsign(e.target.value)}
                     />
                   </Field>
-                  <Field label="Phone number">
+                  <Field label="Phone number *">
                     <Input
-                      placeholder="+45 20 99 00 11"
+                      type="tel"
+                      placeholder="+45 20 99 00 11 or +91 98111 00000"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
+                      required
                     />
                   </Field>
                   <Field label="Date of birth">

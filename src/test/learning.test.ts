@@ -159,9 +159,10 @@ describe("Course assignment access control", () => {
     expect(accessibleModulesFor(vipul, d).map((m) => m.id)).toEqual(["airlaw"]);
     expect(accessibleModulesFor(student, d)).toEqual([]);
 
-    // Verify notification routes to /profile instead of /elearning
+    // Verify notification for course assignment routes directly to /elearning
     const notifs = memberNotifications(d, vipul);
-    expect(notifs[0]?.to).toBe("/profile");
+    const courseNotif = notifs.find((n) => n.category === "course");
+    expect(courseNotif?.to).toBe("/elearning");
   });
 });
 
