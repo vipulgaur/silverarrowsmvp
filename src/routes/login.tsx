@@ -33,7 +33,20 @@ import { LiveIstClock } from "@/components/live-ist-clock";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useTheme } from "@/components/theme-provider";
 import { recordUserLoginSession } from "@/lib/privacy-tracker";
-import { isUserPendingApproval, SOLE_ADMIN_EMAIL, validateAccountCreation } from "@/lib/logic";
+import {
+  isUserPendingApproval,
+  SOLE_ADMIN_EMAIL,
+  validateAccountCreation,
+  validateLiveUsernameAndPhone,
+} from "@/lib/logic";
+import {
+  ACADEMY_EMAIL_SUFFIX,
+  DEFAULT_ISD_CODE,
+  extractEmailUsername,
+  formatAcademyEmail,
+  formatPhoneWithIsd,
+  ISD_COUNTRIES,
+} from "@/lib/isd-codes";
 import { playNotificationSound } from "@/lib/notification-sound";
 import { cn } from "@/lib/utils";
 
@@ -1322,6 +1335,8 @@ function LoginPage() {
   // Create Account inputs
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [signupUsername, setSignupUsername] = useState("");
+  const [signupIsdCode, setSignupIsdCode] = useState(DEFAULT_ISD_CODE);
   const [phone, setPhone] = useState("");
   const [verify, setVerify] = useState("");
   const [role, setRole] = useState<Role>("student");
@@ -1378,87 +1393,39 @@ function LoginPage() {
     }
   }, [hydrated, me, navigate]);
 
-  // Live validation feedback during account creation
+  // Live validation feedback during account creation:
+  // ONLY triggers when username ({username}@flysilverarrows.com) or phone number matches an existing record.
+  // Never triggers when entering first name or last name.
   const liveSignupError = useMemo(() => {
     if (mode !== "signup") return null;
-    const f = firstName.trim();
-    const l = lastName.trim();
-    const e = email.trim().toLowerCase();
-    const p = phone.trim();
-    if (!f && !l && !e && !p) return null;
+    const uname = extractEmailUsername(signupUsername);
+    const rawPhoneDigits = phone.replace(/[^\d]/g, "");
+    const formattedPhone = rawPhoneDigits ? formatPhoneWithIsd(signupIsdCode, phone) : "";
+    if (!uname && rawPhoneDigits.length < 7) return null;
 
-    const activeMembers = data.users.filter((u) => u.status !== "deleted");
-    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
-    const fullName = `${f} ${l}`.trim();
-
-    if (f) {
-      const fNorm = norm(f);
-      if (fNorm === "sakshi" || fNorm === "admin" || fNorm === "administrator") {
-        return `Name "${f}" is reserved by system administration and cannot be registered.`;
-      }
-      const fullNorm = norm(fullName);
-      const nameMatch = activeMembers.find((u) => {
-        const uNorm = norm(u.name);
-        const uFirst = uNorm.split(" ")[0] ?? "";
-        return (
-          uNorm === fullNorm ||
-          uNorm === fNorm ||
-          (!l && uFirst === fNorm && fNorm.length >= 3)
-        );
-      });
-      if (nameMatch) {
-        return `An account for "${nameMatch.name}" (${nameMatch.email}) already exists. Anyone with the same name cannot register a duplicate account or share an email ID.`;
-      }
-    }
-
-    if (e) {
-      if (e === SOLE_ADMIN_EMAIL || e === "sakshi@flysilverarrows.com") {
-        return `The email ID "${e}" is reserved for the sole System Administrator and cannot be registered.`;
-      }
-      const emailMatch = activeMembers.find((u) => u.email.trim().toLowerCase() === e);
-      if (emailMatch) {
-        return `An account with email ID "${e}" already exists (${emailMatch.name}). Anyone with the same name cannot have the same email ID.`;
-      }
-      const prefix = e.split("@")[0];
-      const domain = e.split("@")[1];
-      if (prefix && (domain === "flysilverarrows.com" || domain === "silverarrows.aero")) {
-        const prefixMatch = activeMembers.find(
-          (u) => u.email.trim().toLowerCase().split("@")[0] === prefix,
-        );
-        if (prefixMatch) {
-          return `The academy email identifier "${prefix}@..." is already assigned to ${prefixMatch.name}.`;
-        }
-      }
-    }
-
-    if (p) {
-      const normPhone = p.replace(/[\s\-().]/g, "");
-      if (normPhone.length >= 7) {
-        const phoneMatch = activeMembers.find(
-          (u) => u.phone && u.phone.replace(/[\s\-().]/g, "") === normPhone,
-        );
-        if (phoneMatch) {
-          return `An account with phone number "${p}" already exists (${phoneMatch.name}).`;
-        }
-      }
-    }
-
-    if (f && l && e && p) {
-      return validateAccountCreation(
-        { firstName: f, lastName: l, email: e, phone: p, role },
-        data.users,
-      );
-    }
-
-    return null;
-  }, [mode, firstName, lastName, email, phone, role, data.users]);
+    return validateLiveUsernameAndPhone(
+      {
+        username: uname,
+        email: uname ? formatAcademyEmail(uname) : "",
+        phone: rawPhoneDigits.length >= 7 ? formattedPhone : "",
+      },
+      data.users,
+    );
+  }, [mode, signupUsername, signupIsdCode, phone, data.users]);
 
   // Handle Form Submission (Sign In or Create Account)
   async function submitAuth(e: FormEvent) {
     e.preventDefault();
-    const clean = email.trim();
+    const clean =
+      mode === "signup" ? formatAcademyEmail(signupUsername) : email.trim().toLowerCase();
+    const fullPhone = mode === "signup" ? formatPhoneWithIsd(signupIsdCode, phone) : phone.trim();
+
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean) || clean.length > 255) {
-      toast.error("Enter a valid email address.");
+      toast.error(
+        mode === "signup"
+          ? "Enter a valid username for your @flysilverarrows.com email."
+          : "Enter a valid email address.",
+      );
       return;
     }
     if (password.length < 4) {
@@ -1471,8 +1438,9 @@ function LoginPage() {
         {
           firstName,
           lastName,
+          username: extractEmailUsername(signupUsername),
           email: clean,
-          phone,
+          phone: fullPhone,
           role,
         },
         data.users,
@@ -1556,7 +1524,7 @@ function LoginPage() {
       p_first: firstName.trim(),
       p_last: lastName.trim(),
       p_email: clean.toLowerCase(),
-      p_phone: phone.trim(),
+      p_phone: fullPhone,
       p_role: role,
       p_master: null,
     });
@@ -1945,7 +1913,7 @@ function LoginPage() {
                     {/* Left Column: Personal Information */}
                     <div className="space-y-3 rounded-2xl border border-border/80 bg-background/50 p-4">
                       <div className="font-mono text-[11px] font-bold tracking-wider text-primary uppercase text-left">
-                        Member Information (Unique Name &amp; Email Required)
+                        Member Information (Unique Username &amp; Phone Required)
                       </div>
 
                       <div className="grid grid-cols-2 gap-3 text-left">
@@ -1984,48 +1952,90 @@ function LoginPage() {
                       <div className="space-y-1.5 text-left">
                         <div className="flex items-center justify-between">
                           <Label htmlFor="signupEmail" className="text-xs font-semibold">
-                            Email address (Must be unique)
+                            Email ID (Choose unique username)
                           </Label>
                           <span className="font-mono text-[10px] text-muted-foreground">
-                            Unique ID
+                            Unique Username
                           </span>
                         </div>
-                        <div className="relative">
-                          <Mail className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                          <Input
-                            id="signupEmail"
-                            type="email"
-                            autoComplete="email"
-                            placeholder="firstname.lastname@flysilverarrows.com"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            maxLength={255}
-                            required
-                            className="pl-9 text-xs bg-background/80"
-                          />
+                        <div className="flex items-stretch rounded-xl border border-input bg-background/80 overflow-hidden focus-within:ring-2 focus-within:ring-ring">
+                          <div className="relative flex-1 flex items-center min-w-0">
+                            <Mail className="pointer-events-none ml-3 h-4 w-4 shrink-0 text-muted-foreground" />
+                            <input
+                              id="signupEmail"
+                              type="text"
+                              autoComplete="username"
+                              placeholder="username"
+                              value={signupUsername}
+                              onChange={(e) =>
+                                setSignupUsername(extractEmailUsername(e.target.value))
+                              }
+                              maxLength={120}
+                              required
+                              className="w-full bg-transparent px-2.5 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none font-mono"
+                            />
+                          </div>
+                          <span
+                            data-testid="signup-email-suffix"
+                            className="flex items-center border-l border-border bg-muted/70 px-3 font-mono text-[11px] font-semibold text-primary select-none shrink-0"
+                          >
+                            {ACADEMY_EMAIL_SUFFIX}
+                          </span>
                         </div>
+                        {signupUsername && (
+                          <div className="text-[10.5px] font-mono text-muted-foreground">
+                            Assigned Email ID:{" "}
+                            <span className="font-semibold text-foreground">
+                              {formatAcademyEmail(signupUsername)}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="space-y-1.5 text-left">
                         <div className="flex items-center justify-between">
                           <Label htmlFor="signupPhone" className="text-xs font-semibold">
-                            Phone number (Must be unique)
+                            Mobile number (Must be unique)
                           </Label>
                           <span className="font-mono text-[10px] text-muted-foreground">
-                            Required
+                            ISD + Mobile Required
                           </span>
                         </div>
-                        <Input
-                          id="signupPhone"
-                          type="tel"
-                          autoComplete="tel"
-                          placeholder="+91 98100 00000"
-                          value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
-                          maxLength={30}
-                          required
-                          className="text-xs bg-background/80"
-                        />
+                        <div className="flex items-stretch gap-2">
+                          <NativeSelect
+                            id="signupIsdCode"
+                            aria-label="Country ISD code"
+                            data-testid="signup-isd-select"
+                            value={signupIsdCode}
+                            onChange={(e) => setSignupIsdCode(e.target.value)}
+                            className="w-[155px] shrink-0 text-xs bg-background/80 font-mono"
+                          >
+                            {ISD_COUNTRIES.map((item) => (
+                              <option key={`${item.iso}-${item.code}`} value={item.code}>
+                                {item.label}
+                              </option>
+                            ))}
+                          </NativeSelect>
+                          <Input
+                            id="signupPhone"
+                            type="tel"
+                            autoComplete="tel-national"
+                            placeholder="98100 00000"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
+                            maxLength={20}
+                            required
+                            className="flex-1 text-xs bg-background/80 font-mono"
+                          />
+                        </div>
+                        {phone.trim() && (
+                          <div className="text-[10.5px] font-mono text-muted-foreground">
+                            Formatted Mobile:{" "}
+                            <span className="font-semibold text-foreground">
+                              {formatPhoneWithIsd(signupIsdCode, phone)}
+                            </span>
+                          </div>
+                        )}
                       </div>
                     </div>
 

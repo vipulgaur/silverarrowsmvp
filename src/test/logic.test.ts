@@ -269,41 +269,40 @@ describe("Core Business Rules & Logic (src/lib/logic.ts)", () => {
     expect(expiryState("2020-01-01").state).toBe("expired");
   });
 
-  it("enforces sole administrator policy, duplicate name/email rejection, and permanent account decline", () => {
+  it("enforces sole administrator policy, allows duplicate names with unique username/phone, and rejects matching username or phone", () => {
     const data = seedData();
     const admins = data.users.filter((u) => u.role === "admin");
     expect(admins.length).toBe(1);
     expect(admins[0].email).toBe(SOLE_ADMIN_EMAIL);
 
-    // Reject reserved name ("Sakshi")
+    // Allow name "Sakshi" or duplicate name "Ananya Sharma" when username and phone are unique
     expect(
       validateAccountCreation(
         {
           firstName: "Sakshi",
-          lastName: "Test",
-          email: "sakshi.test@gmail.com",
+          lastName: "Gaur",
+          email: "sakshi.gaur2@flysilverarrows.com",
           phone: "+91 98199 11223",
           role: "student",
         },
         data.users,
       ),
-    ).toBeTruthy();
+    ).toBeNull();
 
-    // Reject duplicate name ("Ananya Sharma")
     expect(
       validateAccountCreation(
         {
           firstName: "Ananya",
           lastName: "Sharma",
-          email: "ananya.new@gmail.com",
+          email: "ananya2@flysilverarrows.com",
           phone: "+91 98199 44556",
           role: "student",
         },
         data.users,
       ),
-    ).toContain("already exists");
+    ).toBeNull();
 
-    // Reject duplicate email
+    // Reject duplicate username / email
     expect(
       validateAccountCreation(
         {
@@ -315,7 +314,22 @@ describe("Core Business Rules & Logic (src/lib/logic.ts)", () => {
         },
         data.users,
       ),
-    ).toContain("already exists");
+    ).toContain("already registered");
+
+    // Reject duplicate phone number
+    const existingPhone = data.users.find((u) => u.id === "u-ana")?.phone ?? "+45 20 11 22 04";
+    expect(
+      validateAccountCreation(
+        {
+          firstName: "Vikram",
+          lastName: "Rao",
+          email: "vikram.unique@flysilverarrows.com",
+          phone: existingPhone,
+          role: "student",
+        },
+        data.users,
+      ),
+    ).toContain("already registered");
 
     // Reject creating a second admin
     expect(

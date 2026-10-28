@@ -21,7 +21,21 @@ import { Textarea } from "@/components/ui/textarea";
 import { Chip, Field, NativeSelect, PageHeader, Section } from "@/components/app-ui";
 import { useMe } from "@/lib/store";
 import { provisionAuthUserWithoutSessionSwitch } from "@/integrations/supabase/client";
-import { activeUsers, GENDERS, SOLE_ADMIN_EMAIL, uid, validateAccountCreation } from "@/lib/logic";
+import {
+  activeUsers,
+  GENDERS,
+  uid,
+  validateAccountCreation,
+  validateLiveUsernameAndPhone,
+} from "@/lib/logic";
+import {
+  ACADEMY_EMAIL_SUFFIX,
+  DEFAULT_ISD_CODE,
+  extractEmailUsername,
+  formatAcademyEmail,
+  formatPhoneWithIsd,
+  ISD_COUNTRIES,
+} from "@/lib/isd-codes";
 import { roleLabel, type Lesson, type Role, type User } from "@/lib/types";
 
 export const Route = createFileRoute("/_shell/admin/create")({
@@ -49,6 +63,7 @@ function AdminCreatePage() {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<Role>("student");
   const [callsign, setCallsign] = useState("");
+  const [isdCode, setIsdCode] = useState(DEFAULT_ISD_CODE);
   const [phone, setPhone] = useState("");
   const [programId, setProgramId] = useState(data.programs[0]?.id ?? "p-ppl");
   const [instructorId, setInstructorId] = useState(instructors[0]?.id ?? "");
@@ -116,70 +131,33 @@ function AdminCreatePage() {
   const [subjectCode, setSubjectCode] = useState("");
   const [subjectName, setSubjectName] = useState("");
 
+  // Live validation ONLY checks username ({username}@flysilverarrows.com) and phone number.
+  // Never triggers when entering a name.
   const liveMemberValidationError = useMemo(() => {
-    const n = name.trim();
-    const e = email.trim().toLowerCase();
-    const p = phone.trim();
-    if (!n && !e && !p) return null;
+    const uname = extractEmailUsername(email);
+    const rawPhoneDigits = phone.replace(/[^\d]/g, "");
+    const formattedPhone = rawPhoneDigits ? formatPhoneWithIsd(isdCode, phone) : "";
+    if (!uname && rawPhoneDigits.length < 7) return null;
 
-    const activeMembers = data.users.filter((u) => u.status !== "deleted");
-    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
-
-    if (n) {
-      const nNorm = norm(n);
-      const firstToken = nNorm.split(" ")[0] ?? "";
-      if (firstToken === "sakshi" || nNorm === "system administrator" || firstToken === "admin") {
-        return `Name "${n}" is reserved by system administration and cannot be registered.`;
-      }
-      const nameMatch = activeMembers.find((u) => {
-        const uNorm = norm(u.name);
-        const uFirst = uNorm.split(" ")[0] ?? "";
-        return (
-          uNorm === nNorm ||
-          (!nNorm.includes(" ") && uFirst === nNorm && nNorm.length >= 3)
-        );
-      });
-      if (nameMatch) {
-        return `An account for "${nameMatch.name}" (${nameMatch.email}) already exists. Anyone with the same name cannot register a duplicate account or share an email ID.`;
-      }
-    }
-
-    if (e) {
-      if (e === SOLE_ADMIN_EMAIL || e === "sakshi@flysilverarrows.com") {
-        return `The email ID "${e}" is reserved for the sole System Administrator.`;
-      }
-      const emailMatch = activeMembers.find((u) => u.email.trim().toLowerCase() === e);
-      if (emailMatch) {
-        return `A member with email ID "${e}" already exists (${emailMatch.name}). Anyone with the same name cannot have the same email ID.`;
-      }
-    }
-
-    if (p) {
-      const normPhone = p.replace(/[\s\-().]/g, "");
-      if (normPhone.length >= 7) {
-        const phoneMatch = activeMembers.find(
-          (u) => u.phone && u.phone.replace(/[\s\-().]/g, "") === normPhone,
-        );
-        if (phoneMatch) {
-          return `A member with phone number "${p}" already exists (${phoneMatch.name}).`;
-        }
-      }
-    }
-
-    if (n && e && p) {
-      return validateAccountCreation({ name: n, email: e, phone: p, role }, data.users);
-    }
-
-    return null;
-  }, [name, email, phone, role, data.users]);
+    return validateLiveUsernameAndPhone(
+      {
+        username: uname,
+        email: uname ? formatAcademyEmail(uname) : "",
+        phone: rawPhoneDigits.length >= 7 ? formattedPhone : "",
+      },
+      data.users,
+    );
+  }, [email, isdCode, phone, data.users]);
 
   function createUser(e: FormEvent) {
     e.preventDefault();
-    const cleanEmail = email.trim().toLowerCase();
-    const cleanPhone = phone.trim();
+    const uname = extractEmailUsername(email);
+    const cleanEmail = formatAcademyEmail(uname);
+    const cleanPhone = formatPhoneWithIsd(isdCode, phone);
     const validationErr = validateAccountCreation(
       {
         name: name.trim(),
+        username: uname,
         email: cleanEmail,
         phone: cleanPhone,
         role,
@@ -199,7 +177,7 @@ function AdminCreatePage() {
       role,
       status: "active",
       callsign: callsign.trim() || name.trim().slice(0, 3).toUpperCase(),
-      ...(phone.trim() ? { phone: phone.trim() } : {}),
+      ...(cleanPhone ? { phone: cleanPhone } : {}),
       ...(role === "student" && programId ? { programId } : {}),
       ...(role === "student" && instructorId ? { instructorId } : {}),
       ...(stage.trim() ? { stage: stage.trim() } : {}),
@@ -522,14 +500,23 @@ function AdminCreatePage() {
                       required
                     />
                   </Field>
-                  <Field label="Email address *">
-                    <Input
-                      type="email"
-                      placeholder="rohan@flysilverarrows.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
+                  <Field label="Email ID (Username) *">
+                    <div className="flex items-stretch rounded-md border border-input bg-background overflow-hidden focus-within:ring-2 focus-within:ring-ring">
+                      <input
+                        type="text"
+                        placeholder="username"
+                        value={email}
+                        onChange={(e) => setEmail(extractEmailUsername(e.target.value))}
+                        required
+                        className="w-full min-w-0 bg-transparent px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none font-mono"
+                      />
+                      <span
+                        data-testid="admin-create-email-suffix"
+                        className="flex items-center border-l border-border bg-muted/70 px-2.5 font-mono text-[11px] font-semibold text-primary select-none shrink-0"
+                      >
+                        {ACADEMY_EMAIL_SUFFIX}
+                      </span>
+                    </div>
                   </Field>
                   <Field label="Role *">
                     <NativeSelect value={role} onChange={(e) => setRole(e.target.value as Role)}>
@@ -549,14 +536,30 @@ function AdminCreatePage() {
                       onChange={(e) => setCallsign(e.target.value)}
                     />
                   </Field>
-                  <Field label="Phone number *">
-                    <Input
-                      type="tel"
-                      placeholder="+45 20 99 00 11 or +91 98111 00000"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      required
-                    />
+                  <Field label="Mobile number (with ISD) *">
+                    <div className="flex items-stretch gap-1.5">
+                      <NativeSelect
+                        aria-label="Country ISD code"
+                        data-testid="admin-create-isd-select"
+                        value={isdCode}
+                        onChange={(e) => setIsdCode(e.target.value)}
+                        className="w-[140px] shrink-0 text-xs font-mono"
+                      >
+                        {ISD_COUNTRIES.map((item) => (
+                          <option key={`${item.iso}-${item.code}`} value={item.code}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </NativeSelect>
+                      <Input
+                        type="tel"
+                        placeholder="98111 00000"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        required
+                        className="flex-1 font-mono text-xs"
+                      />
+                    </div>
                   </Field>
                   <Field label="Date of birth">
                     <Input

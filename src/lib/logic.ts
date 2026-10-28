@@ -11,7 +11,7 @@ import type {
   AppNotification,
   NotificationPriority,
 } from "./types";
-import { roleLabel } from "./types";
+import { reasonLabel, roleLabel } from "./types";
 import { addDays, format, startOfDay, subMonths } from "date-fns";
 
 export const HOUR_PERIODS = [
@@ -768,18 +768,104 @@ export function declineUserLogin(
 }
 
 /**
+ * Compares two phone numbers by normalized digits and subscriber suffix (last 10 digits when applicable).
+ */
+export function phonesMatch(phoneA?: string, phoneB?: string): boolean {
+  if (!phoneA || !phoneB) return false;
+  const digitsA = phoneA.replace(/[^\d]/g, "");
+  const digitsB = phoneB.replace(/[^\d]/g, "");
+  if (digitsA.length < 7 || digitsB.length < 7) return false;
+  if (digitsA === digitsB) return true;
+  if (digitsA.length >= 10 && digitsB.length >= 10) {
+    return digitsA.slice(-10) === digitsB.slice(-10);
+  }
+  if (digitsA.length >= 8 && digitsB.length >= 8) {
+    return digitsA.endsWith(digitsB) || digitsB.endsWith(digitsA);
+  }
+  return false;
+}
+
+/**
+ * Live validation for username ({username}@flysilverarrows.com) and phone number ONLY.
+ * Does NOT trigger on first/last/full name entry.
+ */
+export function validateLiveUsernameAndPhone(
+  candidate: {
+    username?: string;
+    email?: string;
+    phone?: string;
+  },
+  existingUsers: User[],
+): string | null {
+  const rawEmailOrUser = (candidate.username ?? candidate.email ?? "").trim().toLowerCase();
+  const emailPrefix = rawEmailOrUser.includes("@")
+    ? (rawEmailOrUser.split("@")[0]?.trim() ?? "")
+    : rawEmailOrUser.replace(/\s+/g, "");
+  const cleanEmail = rawEmailOrUser.includes("@")
+    ? rawEmailOrUser
+    : emailPrefix
+      ? `${emailPrefix}@flysilverarrows.com`
+      : "";
+  const cleanPhone = (candidate.phone ?? "").trim();
+  const phoneDigits = cleanPhone.replace(/[^\d]/g, "");
+
+  const errors: string[] = [];
+  const activeOrPending = existingUsers.filter((u) => u.status !== "deleted");
+
+  if (emailPrefix) {
+    if (
+      emailPrefix === "admin" ||
+      cleanEmail === SOLE_ADMIN_EMAIL ||
+      cleanEmail === "sakshi@flysilverarrows.com"
+    ) {
+      errors.push(
+        `Username "${emailPrefix}@flysilverarrows.com" is reserved for the sole System Administrator and cannot be registered.`,
+      );
+    } else {
+      const emailMatch = activeOrPending.find((u) => {
+        const existingEmail = u.email.trim().toLowerCase();
+        const existingPrefix = existingEmail.split("@")[0] ?? "";
+        return (
+          existingEmail === cleanEmail ||
+          (existingEmail.endsWith("@flysilverarrows.com") && existingPrefix === emailPrefix)
+        );
+      });
+      if (emailMatch) {
+        errors.push(
+          `Username "${emailPrefix}@flysilverarrows.com" is already registered (${emailMatch.name}). Please choose a different username.`,
+        );
+      }
+    }
+  }
+
+  // Only check phone uniqueness when the user has entered at least 7 subscriber digits
+  // (ignoring a bare ISD code like "+91" before subscriber digits are typed)
+  if (phoneDigits.length >= 7) {
+    const phoneMatch = activeOrPending.find((u) => u.phone && phonesMatch(u.phone, cleanPhone));
+    if (phoneMatch) {
+      errors.push(
+        `Phone number "${cleanPhone}" is already registered (${phoneMatch.name} · ${phoneMatch.phone}). Duplicate phone numbers are not permitted.`,
+      );
+    }
+  }
+
+  return errors.length > 0 ? errors.join(" ") : null;
+}
+
+/**
  * Strict account creation validation shared across public registration (/login) and admin creation (/admin/create).
  * Enforces:
  * 1. Single-admin policy: only admin@flysilverarrows.com is permitted as Administrator.
- * 2. Unique Name policy: no two users can have the same name (or match an existing member's first/full name).
- * 3. Unique Email policy: no two users can share an email ID or @flysilverarrows.com prefix.
- * 4. Unique Phone policy: no two users can share the same phone number.
+ * 2. Unique Username/Email policy: no two users can share an email ID or @flysilverarrows.com username.
+ * 3. Unique Phone policy: no two users can share the same phone number.
+ * Note: Name is NOT checked for duplicates or reserved words — only username/email and phone number are validated for uniqueness.
  */
 export function validateAccountCreation(
   candidate: {
     name?: string;
     firstName?: string;
     lastName?: string;
+    username?: string;
     email: string;
     phone: string;
     role?: Role;
@@ -789,7 +875,13 @@ export function validateAccountCreation(
   const first = (candidate.firstName ?? "").trim();
   const last = (candidate.lastName ?? "").trim();
   const fullName = (candidate.name ?? `${first} ${last}`).trim().replace(/\s+/g, " ");
-  const cleanEmail = (candidate.email ?? "").trim().toLowerCase();
+  const rawEmail = (candidate.email || candidate.username || "").trim().toLowerCase();
+  const cleanEmail = rawEmail.includes("@")
+    ? rawEmail
+    : rawEmail
+      ? `${rawEmail}@flysilverarrows.com`
+      : "";
+  const emailPrefix = cleanEmail.split("@")[0] ?? "";
   const cleanPhone = (candidate.phone ?? "").trim();
 
   if (!fullName || fullName.length < 2) {
@@ -801,8 +893,13 @@ export function validateAccountCreation(
   if (candidate.lastName !== undefined && (!last || last.length < 2)) {
     return "Enter a valid last name (at least 2 characters).";
   }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 255) {
-    return "Enter a valid email address.";
+  if (
+    !emailPrefix ||
+    !/^[a-z0-9._+-]+$/i.test(emailPrefix) ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) ||
+    cleanEmail.length > 255
+  ) {
+    return "Enter a valid username for your @flysilverarrows.com email address.";
   }
   const normPhone = cleanPhone.replace(/[\s\-().+]/g, "");
   if (normPhone.length < 7 || !/^\d+$/.test(normPhone)) {
@@ -810,64 +907,15 @@ export function validateAccountCreation(
   }
 
   // 1. Sole Admin Lock
-  if (candidate.role === "admin" || cleanEmail === SOLE_ADMIN_EMAIL) {
+  if (candidate.role === "admin" || cleanEmail === SOLE_ADMIN_EMAIL || emailPrefix === "admin") {
     return "Administrator creation is locked. Only admin@flysilverarrows.com is authorized as the sole Administrator in the system.";
   }
 
-  const normFull = fullName.toLowerCase();
-  const normFirst = (first || fullName.split(" ")[0] || "").toLowerCase();
-  const emailPrefix = cleanEmail.split("@")[0] ?? "";
-
-  // Reserved identities check
-  const reservedNames = new Set([
-    "admin",
-    "administrator",
-    "system administrator",
-    "demo admin",
-    "sakshi",
-    "sakshi gaur",
-  ]);
-  if (
-    reservedNames.has(normFull) ||
-    reservedNames.has(normFirst) ||
-    cleanEmail === "sakshi@flysilverarrows.com"
-  ) {
-    return `The name or email "${fullName || cleanEmail}" is a reserved system identity and cannot be registered.`;
-  }
-
-  const activeOrPending = existingUsers.filter((u) => u.status !== "deleted");
-
-  for (const u of activeOrPending) {
-    const existingEmail = u.email.trim().toLowerCase();
-    const existingName = u.name.trim().replace(/\s+/g, " ").toLowerCase();
-    const existingFirst = existingName.split(" ")[0] ?? "";
-    const existingEmailPrefix = existingEmail.split("@")[0] ?? "";
-
-    if (existingEmail === cleanEmail) {
-      return `An account with the email ID "${cleanEmail}" already exists (${u.name}). Duplicate email IDs are not permitted.`;
-    }
-
-    if (existingName === normFull || (existingFirst.length >= 3 && existingFirst === normFirst)) {
-      return `An account with the name "${u.name}" already exists (${u.email}). Anyone with the same name cannot register a duplicate account or share an email ID.`;
-    }
-
-    if (
-      cleanEmail.endsWith("@flysilverarrows.com") &&
-      existingEmail.endsWith("@flysilverarrows.com") &&
-      existingEmailPrefix === emailPrefix
-    ) {
-      return `The email ID "${cleanEmail}" conflicts with existing member ${u.name} (${u.email}).`;
-    }
-
-    if (u.phone) {
-      const existingPhone = u.phone.replace(/[\s\-().+]/g, "");
-      if (existingPhone.length >= 7 && existingPhone === normPhone) {
-        return `An account with this phone number already exists (${u.name}). Duplicate phone numbers are not permitted.`;
-      }
-    }
-  }
-
-  return null;
+  // 2. Username/Email & Phone uniqueness check
+  return validateLiveUsernameAndPhone(
+    { username: emailPrefix, email: cleanEmail, phone: cleanPhone },
+    existingUsers,
+  );
 }
 
 
@@ -1227,10 +1275,11 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
           title: "Profile approval requested",
           detail: `${user?.name ?? "Member"} · ${Object.keys(r.changes).length} changes (${isRegulatory ? "Regulatory Licence/Medical" : "Contact/Bio"})`,
           at: r.createdAt,
-          to: "/portal/admin",
+          to: "/admin/approvals",
           status: "pending",
           priority: isRegulatory ? "critical" : "medium",
           category: "profile",
+          profileRequestId: r.id,
         },
       ];
     }
@@ -1249,10 +1298,32 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
           status: r.status,
           priority: "low",
           category: "profile",
+          profileRequestId: r.id,
         },
       ];
     return [];
   });
+  const pendingRescheduleRequests: AppNotification[] =
+    me.role === "admin" || me.role === "instructor"
+      ? data.requests
+          .filter(
+            (r) => r.status === "pending" && (me.role === "admin" || r.instructorId === me.id),
+          )
+          .map((r) => {
+            const student = data.users.find((u) => u.id === r.studentId);
+            return {
+              id: `reschedreq:${r.id}:pending`,
+              title: `Flight slot change approval requested — ${student?.name ?? "Student"}`,
+              detail: `${student?.name ?? "Student"} · Booking ${r.bookingId} · Reason: ${reasonLabel[r.reason]}${r.details ? ` (${r.details})` : ""}`,
+              at: r.createdAt,
+              to: me.role === "admin" ? "/admin/approvals" : "/portal/cfi",
+              status: "pending",
+              priority: "medium" as const,
+              category: "flight" as const,
+              requestId: r.id,
+            };
+          })
+      : [];
   const reschedules: AppNotification[] = data.requests
     .filter((r) => r.status !== "pending" && (r.studentId === me.id || r.instructorId === me.id))
     .map((r) => ({
@@ -1264,18 +1335,20 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
       status: r.status,
       priority: "medium",
       category: "booking",
+      requestId: r.id,
     }));
   const bookingRequests: AppNotification[] =
     me.role === "admin"
       ? data.bookings.filter(bookingPending).map((b) => ({
           id: `${b.id}:pending:${b.requestedAt}`,
-          title: "Booking approval requested",
+          title: "Flight booking approval requested",
           detail: `${data.users.find((u) => u.id === b.studentId)?.name ?? "Student"} · ${b.id} · ${format(new Date(b.start), "dd MMM HH:mm")}`,
           at: b.requestedAt ?? b.start,
-          to: "/portal/admin",
+          to: "/admin/approvals",
           status: "pending",
-          priority: "medium",
-          category: "booking",
+          priority: "critical",
+          category: "flight",
+          bookingId: b.id,
         }))
       : [];
   const outcomes: AppNotification[] = data.activity
@@ -1335,7 +1408,7 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
               title: `Did the flight happen? — ${studentName}`,
               detail: `Student: ${studentName} · Aircraft: ${ac?.reg ?? b.aircraftId} (${format(new Date(b.start), "dd MMM HH:mm")}–${format(new Date(b.end), "HH:mm")})`,
               at: b.end,
-              to: "/flights",
+              to: "/admin/approvals",
               status: "postflight",
               priority: "critical" as const,
               category: "flight" as const,
@@ -1422,10 +1495,11 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
               title: `New Account Login Approval Requested — ${u.name}`,
               detail: `${u.name} (${u.email}${u.phone ? ` · ${u.phone}` : ""}) registered as ${roleLabel[u.role]} and is awaiting Administrator login approval.`,
               at: reqAct?.at ?? new Date().toISOString(),
-              to: "/portal/admin",
+              to: "/admin/approvals",
               status: "pending" as const,
               priority: "critical" as const,
-              category: "profile" as const,
+              category: "account" as const,
+              userId: u.id,
             };
           })
       : [];
@@ -1445,7 +1519,7 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
       to: homeFor[me.role],
       status: "approved" as const,
       priority: "medium" as const,
-      category: "profile" as const,
+      category: "account" as const,
     }));
 
   const pendingFlightLogReviews: AppNotification[] =
@@ -1461,10 +1535,11 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
             title: "Flight log awaiting verification",
             detail: `${data.users.find((u) => u.id === f.pilotId)?.name ?? "Student"} · ${f.date} · ${fmtDec(f.minutes)} h`,
             at: `${f.date}T12:00:00.000Z`,
-            to: "/flights",
+            to: me.role === "admin" ? "/admin/approvals" : "/flights",
             status: "pending",
             priority: "critical",
             category: "flight",
+            flightId: f.id,
           }))
       : [];
 
@@ -1569,6 +1644,7 @@ export function memberNotifications(data: AppData, me?: User | null): AppNotific
     ...pendingFlightLogReviews,
     ...profile,
     ...bookingRequests,
+    ...pendingRescheduleRequests,
     ...reschedules,
     ...outcomes,
     ...courseAssignments,

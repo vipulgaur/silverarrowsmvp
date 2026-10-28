@@ -7,4 +7,4 @@ declare const __APP_BUILD_HASH__: string | undefined;
 export const APP_BUILD_HASH: string =
   typeof __APP_BUILD_HASH__ !== "undefined" && __APP_BUILD_HASH__
     ? __APP_BUILD_HASH__
-    : "3cb33b7";
+    : "b82d91f";

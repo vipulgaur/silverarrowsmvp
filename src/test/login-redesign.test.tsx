@@ -157,10 +157,16 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
     expect(container.textContent).not.toContain("Vipul@1011");
     expect(passwordInput.placeholder).not.toContain("Vipul@1011");
 
+    // Verify permanent @flysilverarrows.com suffix and ISD code selector (+91 - India default)
+    expect(screen.getByTestId("signup-email-suffix").textContent).toBe("@flysilverarrows.com");
+    const isdSelect = screen.getByTestId("signup-isd-select") as HTMLSelectElement;
+    expect(isdSelect.value).toBe("+91");
+    expect(isdSelect.textContent).toContain("{+91} - India");
+
     fireEvent.change(firstNameInput, { target: { value: "Kabir" } });
     fireEvent.change(lastNameInput, { target: { value: "Mehta" } });
-    fireEvent.change(emailInput, { target: { value: "kabir@flysilverarrows.com" } });
-    fireEvent.change(phoneInput, { target: { value: "+91 98100 99887" } });
+    fireEvent.change(emailInput, { target: { value: "kabir" } });
+    fireEvent.change(phoneInput, { target: { value: "98100 99887" } });
     fireEvent.change(passwordInput, { target: { value: "Vipul@1011" } });
     fireEvent.change(verifyInput, { target: { value: "Vipul@1011" } });
 
@@ -173,6 +179,7 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
         const registered = data.users.find((u) => u.email === "kabir@flysilverarrows.com");
         expect(registered).toBeDefined();
         expect(registered?.name).toBe("Kabir Mehta");
+        expect(registered?.phone).toBe("+91 98100 99887");
         expect(registered?.role).toBe("student");
         expect(registered?.status).toBe("active");
       },
@@ -180,31 +187,37 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
     );
   });
 
-  it("blocks duplicate names, reserved names, and duplicate email IDs during registration", () => {
+  it("does NOT show validation error when entering a name, and only validates on matching username or phone number", () => {
     const { container } = renderLoginPage();
     fireEvent.click(screen.getByTestId("mode-tab-signup"));
 
     const firstNameInput = container.querySelector("#firstName") as HTMLInputElement;
     const lastNameInput = container.querySelector("#lastName") as HTMLInputElement;
     const emailInput = container.querySelector("#signupEmail") as HTMLInputElement;
+    const phoneInput = container.querySelector("#signupPhone") as HTMLInputElement;
 
-    // 1. Typing a reserved name ("Sakshi") immediately triggers validation alert
+    // 1. Typing "Sakshi" or an existing member's name ("Ananya Sharma") must NOT trigger a validation alert
     fireEvent.change(firstNameInput, { target: { value: "Sakshi" } });
-    expect(screen.getByTestId("signup-validation-alert")).toBeTruthy();
+    fireEvent.change(lastNameInput, { target: { value: "Gaur" } });
+    expect(screen.queryByTestId("signup-validation-alert")).toBeNull();
 
-    // 2. Typing an existing member's name ("Ananya Sharma") triggers duplicate name alert
     fireEvent.change(firstNameInput, { target: { value: "Ananya" } });
     fireEvent.change(lastNameInput, { target: { value: "Sharma" } });
+    expect(screen.queryByTestId("signup-validation-alert")).toBeNull();
+
+    // 2. Typing a matching username ("ananya") triggers the username validation error
+    fireEvent.change(emailInput, { target: { value: "ananya" } });
     expect(screen.getByTestId("signup-validation-alert").textContent).toContain(
-      "Anyone with the same name cannot register a duplicate account",
+      'Username "ananya@flysilverarrows.com" is already registered',
     );
 
-    // 3. Typing an existing email with a new name triggers duplicate email alert
-    fireEvent.change(firstNameInput, { target: { value: "Unique" } });
-    fireEvent.change(lastNameInput, { target: { value: "Pilot" } });
-    fireEvent.change(emailInput, { target: { value: "ananya@flysilverarrows.com" } });
+    // 3. Changing username to a unique one clears the username error, and entering a matching phone number triggers the phone error
+    fireEvent.change(emailInput, { target: { value: "ananya.unique" } });
+    expect(screen.queryByTestId("signup-validation-alert")).toBeNull();
+
+    fireEvent.change(phoneInput, { target: { value: "98111 00006" } });
     expect(screen.getByTestId("signup-validation-alert").textContent).toContain(
-      "Anyone with the same name cannot have the same email ID",
+      "Phone number",
     );
   });
 

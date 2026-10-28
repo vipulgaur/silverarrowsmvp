@@ -81,6 +81,7 @@ export const Route = createFileRoute("/_shell/portal/admin")({
 });
 
 const quick = [
+  { to: "/admin/approvals", label: "Approvals & notifications", icon: ShieldCheck },
   { to: "/admin/create", label: "Create entities", icon: PlusSquare },
   { to: "/portal/student", label: "Student view", icon: Eye },
   { to: "/portal/cfi", label: "CFI view", icon: Eye },

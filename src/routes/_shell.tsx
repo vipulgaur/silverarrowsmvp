@@ -44,8 +44,10 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  approveUserLogin,
   bookingPending,
   canAccess,
+  declineUserLogin,
   homeFor,
   isUserPendingApproval,
   memberNotifications,
@@ -331,6 +333,12 @@ function ShellLayout() {
           badge: adminPendingCount,
         },
         {
+          to: "/admin/approvals",
+          label: "Approvals & notifications",
+          icon: Bell,
+          badge: adminPendingCount,
+        },
+        {
           to: "/admin/create",
           label: "Create entities",
           icon: PlusSquare,
@@ -580,23 +588,30 @@ function ShellLayout() {
                     displayedNotifs.map((n) => {
                       const bookingId =
                         "bookingId" in n ? (n.bookingId as string | undefined) : undefined;
-                      const linkedBooking = bookingId
-                        ? data.bookings.find((b) => b.id === bookingId)
-                        : undefined;
+                      const linkedBooking =
+                        n.status === "postflight" && bookingId
+                          ? data.bookings.find((b) => b.id === bookingId)
+                          : undefined;
                       const linkedStudent = linkedBooking
                         ? data.users.find((u) => u.id === linkedBooking.studentId)
                         : undefined;
+                      const pendingUser =
+                        n.category === "account" && n.status === "pending" && n.userId
+                          ? data.users.find(
+                              (u) => u.id === n.userId && u.status !== "deleted" && isUserPendingApproval(u),
+                            )
+                          : undefined;
                       return (
                         <div
                           key={n.id}
                           onClick={() => {
-                            if (linkedBooking) return;
+                            if (linkedBooking || pendingUser) return;
                             markOneRead(n.id);
                             setNotifOpen(false);
                             void navigate({ to: n.to as never });
                           }}
                           className={`rounded-xl border p-2.5 text-xs transition space-y-1.5 ${
-                            linkedBooking ? "" : "cursor-pointer"
+                            linkedBooking || pendingUser ? "" : "cursor-pointer"
                           } ${
                             n.read
                               ? "border-border bg-card/60 text-muted-foreground"
@@ -629,6 +644,70 @@ function ShellLayout() {
                             </span>
                           </div>
                           <p className="text-[11px] leading-snug">{n.detail}</p>
+                          {pendingUser && me.role === "admin" && (
+                            <div className="mt-2 flex items-center justify-between gap-2 pt-1.5 border-t border-border/40">
+                              <div className="flex items-center gap-1.5">
+                                <Button
+                                  size="sm"
+                                  className="h-7 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const next = approveUserLogin(data, pendingUser.id, me);
+                                    if (typeof next === "string") {
+                                      toast.error(next);
+                                      return;
+                                    }
+                                    update(() => next);
+                                    log(
+                                      "user_login_approved",
+                                      "user",
+                                      `Approved login access for ${pendingUser.name} (${pendingUser.email})`,
+                                      pendingUser.id,
+                                    );
+                                    markOneRead(n.id);
+                                    toast.success(`Approved login access for ${pendingUser.name}!`);
+                                  }}
+                                >
+                                  <CheckCircle2 className="mr-1 h-3 w-3" /> Approve Login
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 px-2.5 text-[11px] text-destructive border-destructive/40"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const next = declineUserLogin(data, pendingUser.id, me);
+                                    if (typeof next === "string") {
+                                      toast.error(next);
+                                      return;
+                                    }
+                                    update(() => next);
+                                    log(
+                                      "user_login_declined",
+                                      "user",
+                                      `Declined login registration for ${pendingUser.name} (${pendingUser.email})`,
+                                      pendingUser.id,
+                                    );
+                                    markOneRead(n.id);
+                                    toast.success(`Declined account registration for ${pendingUser.name}.`);
+                                  }}
+                                >
+                                  Decline
+                                </Button>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setNotifOpen(false);
+                                  void navigate({ to: "/admin/approvals" as never });
+                                }}
+                                className="text-[10.5px] font-semibold text-primary hover:underline"
+                              >
+                                Track →
+                              </button>
+                            </div>
+                          )}
                           {linkedBooking && (
                             <div className="mt-2 space-y-1.5 pt-1.5 border-t border-border/40">
                               <div className="flex items-center justify-between gap-2 text-[11px]">
@@ -676,6 +755,24 @@ function ShellLayout() {
                     })
                   )}
                 </div>
+
+                {me.role === "admin" && (
+                  <div className="border-t border-border pt-2.5">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      data-testid="bell-open-approvals-center"
+                      className="w-full h-8 text-xs font-semibold border-primary/40 text-primary hover:bg-primary/10"
+                      onClick={() => {
+                        setNotifOpen(false);
+                        void navigate({ to: "/admin/approvals" as never });
+                      }}
+                    >
+                      Open Approvals &amp; Notifications Center (&#123;flights&#125; · &#123;accounts&#125;) →
+                    </Button>
+                  </div>
+                )}
               </PopoverContent>
             </Popover>
 

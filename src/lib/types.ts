@@ -437,7 +437,12 @@ export interface AppNotification {
   to: string;
   status: string;
   priority: NotificationPriority;
-  category: "flight" | "booking" | "safety" | "profile" | "course";
+  category: "flight" | "booking" | "safety" | "profile" | "course" | "account";
   read?: boolean;
   bookingId?: string;
+  userId?: string;
+  flightId?: string;
+  requestId?: string;
+  profileRequestId?: string;
 }
+

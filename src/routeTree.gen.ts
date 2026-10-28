@@ -21,6 +21,7 @@ import { Route as ShellFlightsRouteImport } from './routes/_shell.flights'
 import { Route as ShellProfileRouteImport } from './routes/_shell.profile'
 import { Route as ShellScheduleRouteImport } from './routes/_shell.schedule'
 import { Route as ShellTrainingRouteImport } from './routes/_shell.training'
+import { Route as ShellAdminApprovalsRouteImport } from './routes/_shell.admin.approvals'
 import { Route as ShellAdminAuditRouteImport } from './routes/_shell.admin.audit'
 import { Route as ShellAdminCreateRouteImport } from './routes/_shell.admin.create'
 import { Route as ShellLearningIndexRouteImport } from './routes/_shell.learning.index'
@@ -91,6 +92,11 @@ const ShellTrainingRoute = ShellTrainingRouteImport.update({
   path: '/training',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellAdminApprovalsRoute = ShellAdminApprovalsRouteImport.update({
+  id: '/admin/approvals',
+  path: '/admin/approvals',
+  getParentRoute: () => ShellRoute,
+} as any)
 const ShellAdminAuditRoute = ShellAdminAuditRouteImport.update({
   id: '/admin/audit',
   path: '/admin/audit',
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof ShellProfileRoute
   '/schedule': typeof ShellScheduleRoute
   '/training': typeof ShellTrainingRoute
+  '/admin/approvals': typeof ShellAdminApprovalsRoute
   '/admin/audit': typeof ShellAdminAuditRoute
   '/admin/create': typeof ShellAdminCreateRoute
   '/learning/$chapterId': typeof ShellLearningChapterIdRoute
@@ -177,6 +184,7 @@ export interface FileRoutesByTo {
   '/profile': typeof ShellProfileRoute
   '/schedule': typeof ShellScheduleRoute
   '/training': typeof ShellTrainingRoute
+  '/admin/approvals': typeof ShellAdminApprovalsRoute
   '/admin/audit': typeof ShellAdminAuditRoute
   '/admin/create': typeof ShellAdminCreateRoute
   '/learning/$chapterId': typeof ShellLearningChapterIdRoute
@@ -202,6 +210,7 @@ export interface FileRoutesById {
   '/_shell/profile': typeof ShellProfileRoute
   '/_shell/schedule': typeof ShellScheduleRoute
   '/_shell/training': typeof ShellTrainingRoute
+  '/_shell/admin/approvals': typeof ShellAdminApprovalsRoute
   '/_shell/admin/audit': typeof ShellAdminAuditRoute
   '/_shell/admin/create': typeof ShellAdminCreateRoute
   '/_shell/learning/$chapterId': typeof ShellLearningChapterIdRoute
@@ -227,6 +236,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/schedule'
     | '/training'
+    | '/admin/approvals'
     | '/admin/audit'
     | '/admin/create'
     | '/learning/$chapterId'
@@ -250,6 +260,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/schedule'
     | '/training'
+    | '/admin/approvals'
     | '/admin/audit'
     | '/admin/create'
     | '/learning/$chapterId'
@@ -274,6 +285,7 @@ export interface FileRouteTypes {
     | '/_shell/profile'
     | '/_shell/schedule'
     | '/_shell/training'
+    | '/_shell/admin/approvals'
     | '/_shell/admin/audit'
     | '/_shell/admin/create'
     | '/_shell/learning/$chapterId'
@@ -379,6 +391,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellTrainingRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/admin/approvals': {
+      id: '/_shell/admin/approvals'
+      path: '/admin/approvals'
+      fullPath: '/admin/approvals'
+      preLoaderRoute: typeof ShellAdminApprovalsRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/_shell/admin/audit': {
       id: '/_shell/admin/audit'
       path: '/admin/audit'
@@ -461,6 +480,7 @@ interface ShellRouteChildren {
   ShellProfileRoute: typeof ShellProfileRoute
   ShellScheduleRoute: typeof ShellScheduleRoute
   ShellTrainingRoute: typeof ShellTrainingRoute
+  ShellAdminApprovalsRoute: typeof ShellAdminApprovalsRoute
   ShellAdminAuditRoute: typeof ShellAdminAuditRoute
   ShellAdminCreateRoute: typeof ShellAdminCreateRoute
   ShellLearningChapterIdRoute: typeof ShellLearningChapterIdRoute
@@ -482,6 +502,7 @@ const ShellRouteChildren: ShellRouteChildren = {
   ShellProfileRoute: ShellProfileRoute,
   ShellScheduleRoute: ShellScheduleRoute,
   ShellTrainingRoute: ShellTrainingRoute,
+  ShellAdminApprovalsRoute: ShellAdminApprovalsRoute,
   ShellAdminAuditRoute: ShellAdminAuditRoute,
   ShellAdminCreateRoute: ShellAdminCreateRoute,
   ShellLearningChapterIdRoute: ShellLearningChapterIdRoute,
