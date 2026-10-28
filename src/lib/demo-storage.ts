@@ -12,12 +12,12 @@ function mergeUserWithSeed(u: User, seedUser?: User): User {
   const merged = {
     ...seedUser,
     ...(Object.fromEntries(definedEntries) as Partial<User>),
-    id: u.id,
-    role: u.role,
+    id: seedUser.id,
+    role: u.role || seedUser.role,
     status: u.status,
   };
   // Enforce canonical @flysilverarrows.com email for seed users
-  if (seedUser.id === u.id && seedUser.email.endsWith("@flysilverarrows.com")) {
+  if (seedUser.email.endsWith("@flysilverarrows.com")) {
     merged.email = seedUser.email;
   }
   return merged;
@@ -32,9 +32,10 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
     (localSnapshot?.users ?? []).map((u) => [u.email.toLowerCase(), u]),
   );
 
-  const users = data.users.map((u) => {
-    const seedUser = seedById.get(u.id) ?? seedByEmail.get(u.email.toLowerCase());
-    const localUser = localById.get(u.id) ?? localByEmail.get(u.email.toLowerCase());
+  const mappedUsers = data.users.map((u) => {
+    const emailLower = (u.email || "").trim().toLowerCase();
+    const seedUser = seedById.get(u.id) ?? seedByEmail.get(emailLower);
+    const localUser = localById.get(u.id) ?? localByEmail.get(emailLower);
     const withSeed = mergeUserWithSeed(u, seedUser);
     if (!localUser) return withSeed;
     return {
@@ -62,6 +63,25 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
         withSeed.examTechnicalSpecific,
     };
   });
+
+  // Deduplicate users by canonical ID and email
+  const dedupedByEmail = new Map<string, User>();
+  for (const u of mappedUsers) {
+    const key = (u.email || u.id).trim().toLowerCase();
+    const existing = dedupedByEmail.get(key);
+    if (!existing) {
+      dedupedByEmail.set(key, u);
+    } else {
+      const active = existing.status === "active" ? existing : u.status === "active" ? u : existing;
+      dedupedByEmail.set(key, {
+        ...existing,
+        ...u,
+        id: existing.id.startsWith("u-") ? existing.id : u.id,
+        status: active.status,
+      });
+    }
+  }
+  const users = Array.from(dedupedByEmail.values());
 
   // Preserve canonical seed academy students & instructors if not yet in remote tables
   const existingUserIds = new Set(users.map((u) => u.id));

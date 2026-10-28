@@ -3,30 +3,48 @@ import { format } from "date-fns";
 import {
   ArrowLeft,
   BookOpen,
-  CheckCircle2,
+  Check,
   Flame,
   GraduationCap,
   Layers,
   Lock,
   Play,
   Scale,
+  Search,
   ShieldCheck,
+  UserMinus,
+  UserPlus,
+  Users,
+  X,
   Zap,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { LearningReader } from "@/components/learning-reader";
 import { useStore } from "@/lib/store";
 import {
   AIR_LAW_TOPICS,
   accessibleModulesFor,
+  assignCourseToUsers,
   courseAssignmentInfo,
+  unassignCourseFromUsers,
+  usersAssignedToCourse,
   type CourseId,
   type ELearningModule,
 } from "@/lib/elearning-courses";
 import { learningChapters } from "@/lib/learning-content";
 import { courseProgress, saveLearningRecord } from "@/lib/learning-state";
-import { AirLawChapterExperience } from "@/components/air-law-chapter-experience";
 import {
   airframesChapters,
   airframesChapterById,
@@ -55,7 +73,7 @@ import {
   airlawCourseSubtitle,
   airlawBookExtras,
 } from "@/lib/airlaw-content";
-import type { LearningRecord, User } from "@/lib/types";
+import { roleLabel, type LearningRecord, type User } from "@/lib/types";
 
 function getCourseModuleProgress(courseId: CourseId, memberId: string, records: LearningRecord[]) {
   if (courseId === "pooley") {
@@ -162,6 +180,7 @@ export function CourseReaderView({
       "airlaw-unit-01",
     );
   }
+  void handleToggleAirLawComplete;
 
   if (courseId === "pooley") {
     return (
@@ -343,17 +362,103 @@ export function CourseReaderView({
 }
 
 export function AssignedCoursesPanel({ person, title }: { person: User; title?: string }) {
-  const { data, me } = useStore();
+  const { data, me, update } = useStore();
   const [activeCourse, setActiveCourse] = useState<{
     courseId: CourseId;
     chapterId: string;
   } | null>(null);
 
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [unassignModalOpen, setUnassignModalOpen] = useState(false);
+  const [targetModule, setTargetModule] = useState<ELearningModule | null>(null);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const [unassignCandidateIds, setUnassignCandidateIds] = useState<string[]>([]);
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const [assignmentNote, setAssignmentNote] = useState("");
+  const [assigningBusy, setAssigningBusy] = useState(false);
+  const [unassigningBusy, setUnassigningBusy] = useState(false);
+
   const isSelf = me?.id === person.id;
+  const isAdminViewer = me?.role === "admin" && person.role === "admin";
   const assignedModules = accessibleModulesFor(person, data);
 
+  const activeCandidates = data.users.filter((u) => u.status === "active" && u.role !== "admin");
+  const filteredCandidates = activeCandidates.filter(
+    (u) =>
+      u.name.toLowerCase().includes(candidateSearch.toLowerCase()) ||
+      u.email.toLowerCase().includes(candidateSearch.toLowerCase()) ||
+      u.role.toLowerCase().includes(candidateSearch.toLowerCase()),
+  );
+
+  function handleOpenAssign(mod: ELearningModule) {
+    setTargetModule(mod);
+    setSelectedCandidateIds([]);
+    setCandidateSearch("");
+    setAssignmentNote("");
+    setAssignModalOpen(true);
+  }
+
+  function handleOpenUnassign(mod: ELearningModule) {
+    setTargetModule(mod);
+    const assigned = usersAssignedToCourse(mod.id, data);
+    setUnassignCandidateIds(assigned.map((u) => u.id));
+    setUnassignModalOpen(true);
+  }
+
+  async function handleQuickUnassign(courseId: CourseId, userId: string, userName: string) {
+    if (!me || me.role !== "admin") return;
+    await update((prev) => unassignCourseFromUsers(prev, me, courseId, [userId]));
+    toast.success(`Course unassigned from ${userName}`);
+  }
+
+  async function handleConfirmAssignment() {
+    if (!targetModule || !me || me.role !== "admin") return;
+    if (selectedCandidateIds.length === 0) {
+      toast.error("Please select at least one candidate to assign.");
+      return;
+    }
+    setAssigningBusy(true);
+    try {
+      await update((prev) =>
+        assignCourseToUsers(prev, me, targetModule.id, selectedCandidateIds, assignmentNote.trim()),
+      );
+      const assignedNames = data.users
+        .filter((u) => selectedCandidateIds.includes(u.id))
+        .map((u) => u.name)
+        .join(", ");
+      toast.success(`"${targetModule.title}" assigned to ${assignedNames}`, {
+        description:
+          "Assigned students will immediately receive a real-time notification and see this course on their E-Learning dashboard.",
+      });
+      setAssignModalOpen(false);
+    } finally {
+      setAssigningBusy(false);
+    }
+  }
+
+  async function handleConfirmUnassignment() {
+    if (!targetModule || !me || me.role !== "admin") return;
+    if (unassignCandidateIds.length === 0) {
+      toast.error("Please select at least one candidate to unassign.");
+      return;
+    }
+    setUnassigningBusy(true);
+    try {
+      await update((prev) =>
+        unassignCourseFromUsers(prev, me, targetModule.id, unassignCandidateIds),
+      );
+      const removedNames = data.users
+        .filter((u) => unassignCandidateIds.includes(u.id))
+        .map((u) => u.name)
+        .join(", ");
+      toast.success(`"${targetModule.title}" unassigned from ${removedNames}`);
+      setUnassignModalOpen(false);
+    } finally {
+      setUnassigningBusy(false);
+    }
+  }
+
   if (activeCourse) {
-    // Security guard: verify the person actually has access to activeCourse
     const canView = assignedModules.some((m) => m.id === activeCourse.courseId);
     if (!canView) {
       setActiveCourse(null);
@@ -392,7 +497,7 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
             </h2>
             <p className="text-xs text-muted-foreground">
               {person.role === "admin"
-                ? "Administrator view of all academy courses."
+                ? "Administrator view of all academy courses. Assign or unassign courses to candidates in real time."
                 : `Showing only the specific E-Learning course(s) assigned to ${isSelf ? "your profile" : person.name}.`}
             </p>
           </div>
@@ -430,6 +535,7 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
                       : Scale;
             const info = courseAssignmentInfo(person.id, mod.id, data);
             const prog = getCourseModuleProgress(mod.id, person.id, data.learningRecords);
+            const assignedUsers = isAdminViewer ? usersAssignedToCourse(mod.id, data) : [];
 
             return (
               <div
@@ -444,7 +550,7 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-lg font-bold text-foreground">{mod.title}</h3>
                       <span className="rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                        Assigned Course
+                        {isAdminViewer ? "Academy Module" : "Assigned Course"}
                       </span>
                       <span className="rounded-full bg-muted px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
                         {mod.badge}
@@ -472,7 +578,39 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
                       )}
                     </div>
 
-                    {info && (
+                    {isAdminViewer && (
+                      <div className="pt-2 flex flex-wrap items-center gap-1.5 text-xs">
+                        <span className="inline-flex items-center gap-1 font-semibold text-muted-foreground">
+                          <Users className="h-3.5 w-3.5 text-primary" /> Assigned (
+                          {assignedUsers.length}):
+                        </span>
+                        {assignedUsers.length === 0 ? (
+                          <span className="text-muted-foreground italic">
+                            No candidates assigned yet
+                          </span>
+                        ) : (
+                          assignedUsers.map((u) => (
+                            <span
+                              key={u.id}
+                              className="inline-flex items-center gap-1 rounded-full bg-primary/10 pl-2.5 pr-1.5 py-0.5 text-[11px] font-semibold text-primary"
+                            >
+                              <span>{u.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleQuickUnassign(mod.id, u.id, u.name)}
+                                className="h-3.5 w-3.5 rounded-full hover:bg-destructive hover:text-destructive-foreground inline-flex items-center justify-center transition"
+                                title={`Unassign ${u.name} from ${mod.title}`}
+                                aria-label={`Unassign ${u.name}`}
+                              >
+                                <X className="h-2.5 w-2.5" />
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    {info && !isAdminViewer && (
                       <div className="mt-2 flex flex-wrap items-center gap-2 pt-1 text-[11px] text-muted-foreground">
                         <ShieldCheck className="h-3.5 w-3.5 text-primary" />
                         <span>
@@ -489,7 +627,7 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
                   </div>
                 </div>
 
-                <div className="flex shrink-0 flex-col sm:flex-row items-stretch sm:items-center gap-2 border-t border-border pt-3 lg:border-t-0 lg:pt-0">
+                <div className="flex shrink-0 flex-col sm:flex-row lg:flex-col items-stretch gap-2 border-t border-border pt-3 lg:border-t-0 lg:pt-0">
                   {prog.completed > 0 && prog.percent < 100 && (
                     <Button
                       variant="outline"
@@ -517,12 +655,237 @@ export function AssignedCoursesPanel({ person, title }: { person: User; title?: 
                     <BookOpen className="mr-2 h-4 w-4" />
                     {prog.completed > 0 && prog.percent < 100 ? "Open Reader" : "Launch Course"}
                   </Button>
+                  {isAdminViewer && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => handleOpenAssign(mod)}
+                        className="w-full sm:w-auto font-semibold"
+                      >
+                        <UserPlus className="mr-2 h-4 w-4 text-primary" />
+                        Assign Candidates
+                      </Button>
+                      <Button
+                        variant="outline"
+                        disabled={assignedUsers.length === 0}
+                        onClick={() => handleOpenUnassign(mod)}
+                        className="w-full sm:w-auto border-destructive/45 bg-destructive/10 font-semibold text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                      >
+                        <UserMinus className="mr-2 h-4 w-4" />
+                        Unassign
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       )}
+
+      {/* ADMIN DIRECT ASSIGNMENT DIALOG */}
+      <Dialog open={assignModalOpen} onOpenChange={setAssignModalOpen}>
+        <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              <span>Assign {targetModule?.title ?? "Course"} to Candidates</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Select members from the academy roster. Assigned candidates will immediately receive a
+              notification chime and see this course on their E-Learning dashboard.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3 space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">
+                  Select Candidates ({selectedCandidateIds.length} selected)
+                </Label>
+                <div className="flex items-center gap-2 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCandidateIds(filteredCandidates.map((u) => u.id))}
+                    className="font-semibold text-primary hover:underline"
+                  >
+                    Select All
+                  </button>
+                  <span className="text-muted-foreground">·</span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCandidateIds([])}
+                    className="text-muted-foreground hover:text-foreground"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Filter candidates by name, email, or role…"
+                  value={candidateSearch}
+                  onChange={(e) => setCandidateSearch(e.target.value)}
+                  className="pl-8 h-8 text-xs"
+                />
+              </div>
+
+              <div className="max-h-56 overflow-y-auto rounded-xl border border-border divide-y divide-border/60">
+                {filteredCandidates.map((u) => {
+                  const isChecked = selectedCandidateIds.includes(u.id);
+                  const alreadyHas =
+                    targetModule &&
+                    usersAssignedToCourse(targetModule.id, data).some((x) => x.id === u.id);
+                  return (
+                    <button
+                      key={u.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedCandidateIds((prev) =>
+                          prev.includes(u.id) ? prev.filter((x) => x !== u.id) : [...prev, u.id],
+                        )
+                      }
+                      className={`w-full flex items-center justify-between p-2.5 text-left text-xs transition ${
+                        isChecked ? "bg-primary/8 font-medium" : "hover:bg-accent/40"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div
+                          className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+                            isChecked
+                              ? "bg-primary border-primary text-primary-foreground"
+                              : "border-input bg-background"
+                          }`}
+                        >
+                          {isChecked && <Check className="h-3 w-3 stroke-[3]" />}
+                        </div>
+                        <div className="truncate">
+                          <span className="font-semibold text-foreground">{u.name}</span>
+                          <span className="ml-1.5 text-[11px] text-muted-foreground">
+                            ({roleLabel[u.role]})
+                          </span>
+                          <p className="text-[10px] text-muted-foreground truncate">{u.email}</p>
+                        </div>
+                      </div>
+                      {alreadyHas && (
+                        <span className="shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                          Already Assigned
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold">Assignment Note (Optional)</Label>
+              <Input
+                placeholder="e.g. Complete Chapter 1–3 prior to next ground school session"
+                value={assignmentNote}
+                onChange={(e) => setAssignmentNote(e.target.value)}
+                className="h-8 text-xs"
+              />
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" size="sm" onClick={() => setAssignModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={assigningBusy || selectedCandidateIds.length === 0}
+              onClick={handleConfirmAssignment}
+              className="font-semibold"
+            >
+              {assigningBusy ? "Assigning…" : `Confirm & Assign (${selectedCandidateIds.length})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ADMIN UNASSIGNMENT DIALOG */}
+      <Dialog open={unassignModalOpen} onOpenChange={setUnassignModalOpen}>
+        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl text-destructive">
+              <UserMinus className="h-5 w-5" />
+              <span>Unassign {targetModule?.title ?? "Course"}</span>
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Select candidates from whom you wish to revoke access to this module.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="py-3 space-y-3">
+            {targetModule && (
+              <div className="space-y-1.5 rounded-xl border border-border p-2 max-h-60 overflow-y-auto">
+                {usersAssignedToCourse(targetModule.id, data).length === 0 ? (
+                  <p className="p-4 text-center text-xs text-muted-foreground">
+                    No candidates are currently assigned to this module.
+                  </p>
+                ) : (
+                  usersAssignedToCourse(targetModule.id, data).map((u) => {
+                    const isChecked = unassignCandidateIds.includes(u.id);
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() =>
+                          setUnassignCandidateIds((prev) =>
+                            prev.includes(u.id) ? prev.filter((x) => x !== u.id) : [...prev, u.id],
+                          )
+                        }
+                        className={`w-full flex items-center justify-between p-2 rounded-lg text-xs transition border ${
+                          isChecked
+                            ? "border-destructive/40 bg-destructive/5 font-medium"
+                            : "border-transparent bg-card hover:bg-accent/40"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`flex h-4 w-4 items-center justify-center rounded border transition-colors ${
+                              isChecked
+                                ? "bg-destructive border-destructive text-destructive-foreground"
+                                : "border-input bg-background"
+                            }`}
+                          >
+                            {isChecked && <Check className="h-3 w-3 stroke-[3]" />}
+                          </div>
+                          <span className="font-semibold text-foreground">{u.name}</span>
+                          <span className="text-[11px] text-muted-foreground font-mono">
+                            ({roleLabel[u.role]})
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">{u.email}</span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="ghost" size="sm" onClick={() => setUnassignModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={unassigningBusy || unassignCandidateIds.length === 0}
+              onClick={handleConfirmUnassignment}
+              className="font-semibold"
+            >
+              {unassigningBusy ? "Revoking…" : `Unassign Selected (${unassignCandidateIds.length})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
+

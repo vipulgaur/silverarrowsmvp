@@ -45,6 +45,7 @@ import {
   type ELearningModule,
 } from "@/lib/elearning-courses";
 import { roleLabel } from "@/lib/types";
+import { APP_BUILD_HASH } from "@/lib/build-info";
 
 export const Route = createFileRoute("/elearning")({
   head: () => ({
@@ -846,9 +847,14 @@ function ELearningPage() {
       <footer className="border-t border-border bg-card/30 px-6 py-4 text-xs text-muted-foreground">
         <div className="mx-auto flex w-full max-w-[1600px] items-center justify-between gap-4">
           <BrandLogo className="h-8" />
-          <p className="text-right font-medium text-muted-foreground">
-            &copy; SA Flight Academy OS. Rights Reserved.
-          </p>
+          <div className="flex items-center gap-3 text-right">
+            <span className="rounded bg-muted px-2 py-0.5 font-mono text-[10px] font-semibold tracking-wider text-muted-foreground">
+              Build #{APP_BUILD_HASH}
+            </span>
+            <p className="font-medium text-muted-foreground">
+              &copy; SA Flight Academy OS. Rights Reserved.
+            </p>
+          </div>
         </div>
       </footer>
     </div>

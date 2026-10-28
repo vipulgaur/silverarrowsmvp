@@ -26,6 +26,7 @@ import {
   fromTables,
   hasChanges,
   mergePending,
+  toAppMemberId,
   toTables,
   type Tables,
 } from "./api/mapping";
@@ -106,7 +107,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const syncFromServerOrLocal = useCallback(async () => {
-    // 1. Check real Supabase authenticated user first
+    // 1. If an explicit local demo session is active (e.g. offline fallback or test harness), resolve locally first
+    const demoSession = getStoredDemoSession();
+    if (demoSession) {
+      tenantIdRef.current = null;
+      setActiveTenantId(null);
+      baselineRef.current = null;
+      const sharedSnapshot = await fetchLocalSync();
+      const baseData = sharedSnapshot ?? readDemoData().data;
+      const fresh = mergeCourseAssignments(baseData);
+      writeDemoData(fresh);
+      latest.current = fresh;
+      setData(fresh);
+      setMeId(toAppMemberId(demoSession.user.id, demoSession.user.email));
+      setNoAccess(false);
+      setHydrated(true);
+      return;
+    }
+
+    // 2. Check real Supabase authenticated user
     const { data: authData } = await supabase.auth.getUser();
     const authUser = authData?.user;
 
@@ -133,7 +152,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           writeDemoData(reconciledData);
           latest.current = reconciledData;
           setData(reconciledData);
-          setMeId(loaded.meId);
+          setMeId(toAppMemberId(loaded.meId, authUser.email));
           setNoAccess(false);
           setHydrated(true);
           return;
@@ -141,35 +160,36 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.warn("Failed to load academy from Supabase:", err);
       }
+
+      // Graceful fallback if Supabase loadAcademy returns null or errors for an authenticated user
+      const fallbackData = mergeCourseAssignments(
+        enrichWithSeedDefaults(readDemoData().data, latest.current),
+      );
+      const emailLower = (authUser.email ?? "").trim().toLowerCase();
+      const canonicalId = toAppMemberId(authUser.id, emailLower);
+      const matchedUser =
+        fallbackData.users.find((u) => u.id === canonicalId && u.status !== "deleted") ??
+        fallbackData.users.find(
+          (u) => u.email.trim().toLowerCase() === emailLower && u.status !== "deleted",
+        );
+
+      if (matchedUser) {
+        writeDemoData(fallbackData);
+        latest.current = fallbackData;
+        setData(fallbackData);
+        setMeId(matchedUser.id);
+        setNoAccess(false);
+        setHydrated(true);
+        return;
+      }
     }
 
-    // 2. If not authenticated, check demo session
-    const demoSession = getStoredDemoSession();
-    if (demoSession) {
-      tenantIdRef.current = null;
-      setActiveTenantId(null);
-      baselineRef.current = null;
-      const sharedSnapshot = await fetchLocalSync();
-      const baseData = sharedSnapshot ?? readDemoData().data;
-      const fresh = mergeCourseAssignments(baseData);
-      writeDemoData(fresh);
-      latest.current = fresh;
-      setData(fresh);
-      setMeId(demoSession.user.id);
-      setNoAccess(false);
-      setHydrated(true);
-      return;
-    }
-
-    if (!authUser) {
-      tenantIdRef.current = null;
-      setActiveTenantId(null);
-      baselineRef.current = null;
-      setMeId(null);
-      setNoAccess(false);
-      setHydrated(true);
-      return;
-    }
+    tenantIdRef.current = null;
+    setActiveTenantId(null);
+    baselineRef.current = null;
+    setMeId(null);
+    setNoAccess(false);
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -394,7 +414,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const me = meId
-    ? (data.users.find((u) => u.id === meId && u.status !== "deleted") ?? null)
+    ? (data.users.find(
+        (u) => (u.id === meId || u.id === toAppMemberId(meId)) && u.status !== "deleted",
+      ) ?? null)
     : null;
 
   useEffect(() => {
@@ -518,9 +540,10 @@ export function useLookup() {
   return {
     user: (id?: string) => {
       if (!id) return undefined;
+      const appId = toAppMemberId(id);
       return (
-        data.users.find((u) => u.id === id) ??
-        seedData().users.find((u) => u.id === id)
+        data.users.find((u) => u.id === id || u.id === appId) ??
+        seedData().users.find((u) => u.id === id || u.id === appId)
       );
     },
     aircraft: (id?: string) => {

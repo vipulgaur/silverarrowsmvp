@@ -140,12 +140,14 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
     const firstNameInput = container.querySelector("#firstName") as HTMLInputElement;
     const lastNameInput = container.querySelector("#lastName") as HTMLInputElement;
     const emailInput = container.querySelector("#signupEmail") as HTMLInputElement;
+    const phoneInput = container.querySelector("#signupPhone") as HTMLInputElement;
     const passwordInput = container.querySelector("#signupPassword") as HTMLInputElement;
     const verifyInput = container.querySelector("#verifyPassword") as HTMLInputElement;
 
     expect(firstNameInput).toBeTruthy();
     expect(lastNameInput).toBeTruthy();
     expect(emailInput).toBeTruthy();
+    expect(phoneInput).toBeTruthy();
     expect(passwordInput).toBeTruthy();
     expect(verifyInput).toBeTruthy();
 
@@ -156,6 +158,7 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
     fireEvent.change(firstNameInput, { target: { value: "Kabir" } });
     fireEvent.change(lastNameInput, { target: { value: "Mehta" } });
     fireEvent.change(emailInput, { target: { value: "kabir@flysilverarrows.com" } });
+    fireEvent.change(phoneInput, { target: { value: "+91 98100 99887" } });
     fireEvent.change(passwordInput, { target: { value: "Vipul@1011" } });
     fireEvent.change(verifyInput, { target: { value: "Vipul@1011" } });
 

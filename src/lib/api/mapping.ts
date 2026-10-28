@@ -55,66 +55,113 @@ const num = (v: unknown): number | undefined =>
 const str = (v: unknown): string | undefined =>
   v === null || v === undefined || v === "" ? undefined : String(v);
 
+export const APP_TO_DB_MEMBER_ID: Record<string, string> = {
+  "u-admin": "m-fd7e4922f88e467683f0ef8e62ca2b05",
+  "u-vpl": "m-2326d678c3bf48e199818e105abe8e98",
+  "u-prn": "m-a73723d804884a57896a629899673193",
+  "u-anj": "m-93fba566ab0b4b7d996915d2550e9a6a",
+  "u-ana": "m-88859a4e679b4d1a95886a0ee84edb67",
+  "u-arp": "m-759b6b6f419e4a3290bd963945d542ba",
+  "u-lnl": "m-dbc9b6e3a6284caf8e04980311992e57",
+};
+
+export const DB_TO_APP_MEMBER_ID: Record<string, string> = Object.fromEntries(
+  Object.entries(APP_TO_DB_MEMBER_ID).map(([appId, dbId]) => [dbId, appId]),
+);
+
+export const EMAIL_TO_APP_MEMBER_ID: Record<string, string> = {
+  "sakshi@flysilverarrows.com": "u-admin",
+  "vipul@flysilverarrows.com": "u-vpl",
+  "priya@flysilverarrows.com": "u-prn",
+  "anujay@flysilverarrows.com": "u-anj",
+  "ananya@flysilverarrows.com": "u-ana",
+  "aarav@flysilverarrows.com": "u-arp",
+  "liam@flysilverarrows.com": "u-lnl",
+  "rohan@flysilverarrows.com": "u-rhv",
+};
+
+export function toDbMemberId(id: string | null | undefined): string | null {
+  if (!id) return null;
+  return APP_TO_DB_MEMBER_ID[id] ?? id;
+}
+
+export function toAppMemberId(id: string | null | undefined, email?: string | null): string {
+  if (email) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (EMAIL_TO_APP_MEMBER_ID[cleanEmail]) {
+      return EMAIL_TO_APP_MEMBER_ID[cleanEmail];
+    }
+  }
+  if (!id) return "";
+  return DB_TO_APP_MEMBER_ID[id] ?? id;
+}
+
 export function toTables(data: AppData, tenantId: string): Tables {
   return {
-    tenant_members: data.users.map((u) => ({
-      tenant_id: tenantId,
-      id: u.id,
-      name: u.name,
-      email: u.email,
-      phone: u.phone ?? null,
-      callsign: u.callsign ?? null,
-      program_id: u.programId ?? null,
-      instructor_id: u.instructorId ?? null,
-      licence: u.licence ?? null,
-      stage: u.stage ?? null,
-      speciality: u.speciality ?? null,
-      medical_class: u.medicalClass ?? null,
-      medical_expiry: u.medicalExpiry ?? null,
-      rating_expiry: u.ratingExpiry ?? null,
-      icao_level: u.icaoLevel ?? null,
-      prior_minutes: u.priorMinutes ?? null,
-      status: u.status,
-      deleted_by: u.deletedBy ?? null,
-      deleted_at: u.deletedAt ?? null,
-      status_reason: u.statusReason ?? null,
-      address: u.address ?? null,
-      post_code: u.postCode ?? null,
-      city: u.city ?? null,
-      country: u.country ?? null,
-      date_of_birth: u.dateOfBirth ?? null,
-      gender: u.gender ?? null,
-      place_of_birth: u.placeOfBirth ?? null,
-      user_reference: u.userReference ?? null,
-      caa_ref: u.caaRef ?? null,
-      computer_number: u.computerNumber ?? null,
-      egca_id: u.egcaId ?? null,
-      file_number: u.fileNumber ?? null,
-      spl_number: u.splNumber ?? null,
-      spl_expiry: u.splExpiry ?? null,
-      frtol_number: u.frtolNumber ?? null,
-      frtol_expiry: u.frtolExpiry ?? null,
-      rtr_number: u.rtrNumber ?? null,
-      rtr_expiry: u.rtrExpiry ?? null,
-      exam_air_regulation: u.examAirRegulation ?? null,
-      exam_meteorology: u.examMeteorology ?? null,
-      exam_air_navigation: u.examAirNavigation ?? null,
-      exam_technical_general: u.examTechnicalGeneral ?? null,
-      exam_technical_specific: u.examTechnicalSpecific ?? null,
-      emergency_name: u.emergencyName ?? null,
-      emergency_phone: u.emergencyPhone ?? null,
-      emergency_relation: u.emergencyRelation ?? null,
-      public_note: u.publicNote ?? null,
-      admin_note: u.adminNote ?? null,
-      instructor_note: u.instructorNote ?? null,
-      photo_url: u.photoUrl ?? null,
-    })),
-    member_roles: data.users.map((u) => ({
-      tenant_id: tenantId,
-      id: u.id,
-      member_id: u.id,
-      role: u.role,
-    })),
+    tenant_members: data.users.map((u) => {
+      const dbId = toDbMemberId(u.id) ?? u.id;
+      return {
+        tenant_id: tenantId,
+        id: dbId,
+        name: u.name,
+        email: u.email,
+        phone: u.phone ?? null,
+        callsign: u.callsign ?? null,
+        program_id: u.programId ?? null,
+        instructor_id: toDbMemberId(u.instructorId),
+        licence: u.licence ?? null,
+        stage: u.stage ?? null,
+        speciality: u.speciality ?? null,
+        medical_class: u.medicalClass ?? null,
+        medical_expiry: u.medicalExpiry ?? null,
+        rating_expiry: u.ratingExpiry ?? null,
+        icao_level: u.icaoLevel ?? null,
+        prior_minutes: u.priorMinutes ?? null,
+        status: u.status,
+        deleted_by: toDbMemberId(u.deletedBy),
+        deleted_at: u.deletedAt ?? null,
+        status_reason: u.statusReason ?? null,
+        address: u.address ?? null,
+        post_code: u.postCode ?? null,
+        city: u.city ?? null,
+        country: u.country ?? null,
+        date_of_birth: u.dateOfBirth ?? null,
+        gender: u.gender ?? null,
+        place_of_birth: u.placeOfBirth ?? null,
+        user_reference: u.userReference ?? null,
+        caa_ref: u.caaRef ?? null,
+        computer_number: u.computerNumber ?? null,
+        egca_id: u.egcaId ?? null,
+        file_number: u.fileNumber ?? null,
+        spl_number: u.splNumber ?? null,
+        spl_expiry: u.splExpiry ?? null,
+        frtol_number: u.frtolNumber ?? null,
+        frtol_expiry: u.frtolExpiry ?? null,
+        rtr_number: u.rtrNumber ?? null,
+        rtr_expiry: u.rtrExpiry ?? null,
+        exam_air_regulation: u.examAirRegulation ?? null,
+        exam_meteorology: u.examMeteorology ?? null,
+        exam_air_navigation: u.examAirNavigation ?? null,
+        exam_technical_general: u.examTechnicalGeneral ?? null,
+        exam_technical_specific: u.examTechnicalSpecific ?? null,
+        emergency_name: u.emergencyName ?? null,
+        emergency_phone: u.emergencyPhone ?? null,
+        emergency_relation: u.emergencyRelation ?? null,
+        public_note: u.publicNote ?? null,
+        admin_note: u.adminNote ?? null,
+        instructor_note: u.instructorNote ?? null,
+        photo_url: u.photoUrl ?? null,
+      };
+    }),
+    member_roles: data.users.map((u) => {
+      const dbId = toDbMemberId(u.id) ?? u.id;
+      return {
+        tenant_id: tenantId,
+        id: dbId,
+        member_id: dbId,
+        role: u.role,
+      };
+    }),
     aircraft: data.aircraft.map((a) => ({
       tenant_id: tenantId,
       id: a.id,
@@ -172,15 +219,15 @@ export function toTables(data: AppData, tenantId: string): Tables {
       type: b.type,
       status: b.status,
       aircraft_id: b.aircraftId ?? null,
-      instructor_id: b.instructorId ?? null,
-      student_id: b.studentId ?? null,
+      instructor_id: toDbMemberId(b.instructorId),
+      student_id: toDbMemberId(b.studentId),
       lesson_id: b.lessonId ?? null,
       route: b.route ?? null,
       notes: b.notes ?? null,
       approval_status: b.approvalStatus ?? "approved",
-      requested_by: b.requestedBy ?? null,
+      requested_by: toDbMemberId(b.requestedBy),
       requested_at: b.requestedAt ?? null,
-      reviewed_by: b.reviewedBy ?? null,
+      reviewed_by: toDbMemberId(b.reviewedBy),
       reviewed_at: b.reviewedAt ?? null,
       decision_notes: b.decisionNotes ?? null,
     })),
@@ -201,8 +248,8 @@ export function toTables(data: AppData, tenantId: string): Tables {
       tach_start: f.tachStart ?? null,
       tach_end: f.tachEnd ?? null,
       aircraft_id: f.aircraftId,
-      pilot_id: f.pilotId,
-      instructor_id: f.instructorId ?? null,
+      pilot_id: toDbMemberId(f.pilotId) ?? f.pilotId,
+      instructor_id: toDbMemberId(f.instructorId),
       lesson_id: f.lessonId ?? null,
       booking_id: f.bookingId ?? null,
       landings: f.landings,
@@ -211,17 +258,17 @@ export function toTables(data: AppData, tenantId: string): Tables {
       grade: f.grade ?? null,
       remarks: f.remarks ?? null,
       verification_status: f.verificationStatus ?? "verified",
-      submitted_by: f.submittedBy ?? null,
-      verified_by: f.verifiedBy ?? null,
+      submitted_by: toDbMemberId(f.submittedBy),
+      verified_by: toDbMemberId(f.verifiedBy),
       verified_at: f.verifiedAt ?? null,
     })),
     completions: data.completions.map((c) => ({
       tenant_id: tenantId,
       id: c.id,
-      student_id: c.studentId,
+      student_id: toDbMemberId(c.studentId) ?? c.studentId,
       lesson_id: c.lessonId,
       date: c.date,
-      instructor_id: c.instructorId ?? null,
+      instructor_id: toDbMemberId(c.instructorId),
       grade: c.grade ?? null,
       flight_id: c.flightId ?? null,
     })),
@@ -229,14 +276,14 @@ export function toTables(data: AppData, tenantId: string): Tables {
       tenant_id: tenantId,
       id: r.id,
       booking_id: r.bookingId,
-      student_id: r.studentId,
-      instructor_id: r.instructorId ?? null,
+      student_id: toDbMemberId(r.studentId) ?? r.studentId,
+      instructor_id: toDbMemberId(r.instructorId),
       reason: r.reason,
       details: r.details,
       proposed_start: r.proposedStart,
       proposed_end: r.proposedEnd,
       status: r.status,
-      reviewer_id: r.reviewerId ?? null,
+      reviewer_id: toDbMemberId(r.reviewerId),
       notes: r.notes ?? null,
       reviewed_at: r.reviewedAt ?? null,
       created_at: r.createdAt,
@@ -244,11 +291,11 @@ export function toTables(data: AppData, tenantId: string): Tables {
     exam_results: data.exams.map((e) => ({
       tenant_id: tenantId,
       id: e.id,
-      student_id: e.studentId,
+      student_id: toDbMemberId(e.studentId) ?? e.studentId,
       subject_id: e.subjectId,
       score: e.score,
       passed: e.passed,
-      signed_by: e.signedBy,
+      signed_by: toDbMemberId(e.signedBy) ?? e.signedBy,
       date: e.date,
     })),
     lectures: data.lectures.map((l) => ({
@@ -259,37 +306,38 @@ export function toTables(data: AppData, tenantId: string): Tables {
       starts_at: l.start,
       ends_at: l.end,
       room_id: l.roomId,
-      instructor_id: l.instructorId,
-      enrolled: l.enrolled,
-      attended: l.attended,
+      instructor_id: toDbMemberId(l.instructorId) ?? l.instructorId,
+      enrolled: l.enrolled.map((id) => toDbMemberId(id) ?? id),
+      attended: l.attended.map((id) => toDbMemberId(id) ?? id),
       signed_off: l.signedOff,
     })),
     duty_records: data.duty.map((d) => ({
       tenant_id: tenantId,
       id: d.id,
-      instructor_id: d.instructorId,
+      instructor_id: toDbMemberId(d.instructorId) ?? d.instructorId,
       starts_at: d.start,
       ends_at: d.end ?? null,
     })),
     profile_requests: data.profileRequests.map((p) => ({
       tenant_id: tenantId,
       id: p.id,
-      user_id: p.userId,
-      submitted_by: p.submittedBy,
+      user_id: toDbMemberId(p.userId) ?? p.userId,
+      submitted_by: toDbMemberId(p.submittedBy) ?? p.submittedBy,
       changes: p.changes,
       before_values: p.before,
       status: p.status,
       created_at: p.createdAt,
       reviewed_at: p.reviewedAt ?? null,
-      reviewer_id: p.reviewerId ?? null,
+      reviewer_id: toDbMemberId(p.reviewerId),
       notes: p.notes ?? null,
     })),
     learning_records: data.learningRecords.map((r) => {
-      const uid = r.userId ?? r.memberId ?? "guest";
+      const appUid = r.userId ?? r.memberId ?? "guest";
+      const dbUid = toDbMemberId(appUid) ?? appUid;
       return {
         tenant_id: tenantId,
-        id: r.id ?? `${uid}:${r.chapterId}`,
-        user_id: uid,
+        id: r.id ?? `${dbUid}:${r.chapterId}`,
+        user_id: dbUid,
         chapter_id: r.chapterId,
         completed: r.completed,
         bookmarked: r.bookmarked,
@@ -297,24 +345,25 @@ export function toTables(data: AppData, tenantId: string): Tables {
         answers: r.answers ?? {},
       };
     }),
-    notification_reads: Object.entries(data.readNotificationIds).flatMap(([memberId, ids]) =>
-      ids.map((notificationId) => ({
+    notification_reads: Object.entries(data.readNotificationIds).flatMap(([memberId, ids]) => {
+      const dbMemberId = toDbMemberId(memberId) ?? memberId;
+      return ids.map((notificationId) => ({
         tenant_id: tenantId,
-        id: `${memberId}::${notificationId}`,
-        member_id: memberId,
+        id: `${dbMemberId}::${notificationId}`,
+        member_id: dbMemberId,
         notification_id: notificationId,
-      })),
-    ),
+      }));
+    }),
     activity_feed: data.activity.map((a) => ({
       tenant_id: tenantId,
       id: a.id,
       occurred_at: a.at,
-      actor_id: a.actorId,
+      actor_id: toDbMemberId(a.actorId) ?? a.actorId,
       actor_name: a.actorName,
       actor_role: a.actorRole,
       action: a.action,
       entity_type: a.entityType,
-      entity_id: a.entityId ?? null,
+      entity_id: toDbMemberId(a.entityId),
       details: a.details,
     })),
   };
@@ -325,22 +374,25 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
   for (const r of tables.member_roles ?? []) {
     if (typeof r.member_id === "string" && typeof r.role === "string") {
       roleMap.set(r.member_id, r.role as Role);
+      roleMap.set(toAppMemberId(r.member_id), r.role as Role);
     }
   }
 
   const rawUsers: User[] = (tables.tenant_members ?? []).map((m) => {
-    const id = String(m.id);
+    const rawId = String(m.id);
+    const email = String(m.email ?? "");
+    const id = toAppMemberId(rawId, email);
     const mc = num(m.medical_class);
     return {
       id,
       name: String(m.name ?? ""),
-      email: String(m.email ?? ""),
-      role: roleMap.get(id) ?? "student",
+      email,
+      role: roleMap.get(rawId) ?? roleMap.get(id) ?? "student",
       status: m.status === "deleted" ? "deleted" : "active",
       ...(str(m.phone) ? { phone: str(m.phone)! } : {}),
       ...(str(m.callsign) ? { callsign: str(m.callsign)! } : {}),
       ...(str(m.program_id) ? { programId: str(m.program_id)! } : {}),
-      ...(str(m.instructor_id) ? { instructorId: str(m.instructor_id)! } : {}),
+      ...(str(m.instructor_id) ? { instructorId: toAppMemberId(str(m.instructor_id)!) } : {}),
       ...(str(m.licence) ? { licence: str(m.licence)! } : {}),
       ...(str(m.stage) ? { stage: str(m.stage)! } : {}),
       ...(str(m.speciality) ? { speciality: str(m.speciality)! } : {}),
@@ -349,7 +401,7 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
       ...(str(m.rating_expiry) ? { ratingExpiry: str(m.rating_expiry)! } : {}),
       ...(num(m.icao_level) !== undefined ? { icaoLevel: num(m.icao_level)! } : {}),
       ...(num(m.prior_minutes) !== undefined ? { priorMinutes: num(m.prior_minutes)! } : {}),
-      ...(str(m.deleted_by) ? { deletedBy: str(m.deleted_by)! } : {}),
+      ...(str(m.deleted_by) ? { deletedBy: toAppMemberId(str(m.deleted_by)!) } : {}),
       ...(str(m.deleted_at) ? { deletedAt: str(m.deleted_at)! } : {}),
       ...(str(m.status_reason) ? { statusReason: str(m.status_reason)! } : {}),
       ...(str(m.address) ? { address: str(m.address)! } : {}),
@@ -393,20 +445,37 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
     };
   });
 
-  // Deduplicate users by normalized email, consolidating to one primary canonical account per person
-  const userByEmail = new Map<string, User>();
+  // Deduplicate users by canonical ID and normalized email, consolidating to one primary canonical account per person
+  const userById = new Map<string, User>();
   for (const u of rawUsers) {
+    const existing = userById.get(u.id);
+    if (!existing) {
+      userById.set(u.id, u);
+    } else {
+      const active = existing.status === "active" ? existing : u.status === "active" ? u : existing;
+      userById.set(u.id, {
+        ...existing,
+        ...u,
+        id: existing.id,
+        status: active.status,
+        phone: active.phone || existing.phone || u.phone,
+      });
+    }
+  }
+  const userByEmail = new Map<string, User>();
+  for (const u of userById.values()) {
     const key = u.email.trim().toLowerCase();
     if (!key) continue;
     const existing = userByEmail.get(key);
     if (!existing) {
       userByEmail.set(key, u);
     } else {
-      // Keep active status, merge additional contact and licensing attributes
       const active = existing.status === "active" ? existing : u.status === "active" ? u : existing;
+      const canonicalId = existing.id.startsWith("u-") ? existing.id : u.id;
       userByEmail.set(key, {
         ...existing,
         ...u,
+        id: canonicalId,
         status: active.status,
         phone: active.phone || existing.phone || u.phone,
       });
@@ -485,15 +554,15 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
     type: (b.type as Booking["type"]) ?? "lesson",
     status: (b.status as Booking["status"]) ?? "scheduled",
     ...(str(b.aircraft_id) ? { aircraftId: str(b.aircraft_id)! } : {}),
-    ...(str(b.instructor_id) ? { instructorId: str(b.instructor_id)! } : {}),
-    ...(str(b.student_id) ? { studentId: str(b.student_id)! } : {}),
+    ...(str(b.instructor_id) ? { instructorId: toAppMemberId(str(b.instructor_id)!) } : {}),
+    ...(str(b.student_id) ? { studentId: toAppMemberId(str(b.student_id)!) } : {}),
     ...(str(b.lesson_id) ? { lessonId: str(b.lesson_id)! } : {}),
     ...(str(b.route) ? { route: str(b.route)! } : {}),
     ...(str(b.notes) ? { notes: str(b.notes)! } : {}),
     approvalStatus: (b.approval_status as Booking["approvalStatus"]) ?? "approved",
-    ...(str(b.requested_by) ? { requestedBy: str(b.requested_by)! } : {}),
+    ...(str(b.requested_by) ? { requestedBy: toAppMemberId(str(b.requested_by)!) } : {}),
     ...(str(b.requested_at) ? { requestedAt: str(b.requested_at)! } : {}),
-    ...(str(b.reviewed_by) ? { reviewedBy: str(b.reviewed_by)! } : {}),
+    ...(str(b.reviewed_by) ? { reviewedBy: toAppMemberId(str(b.reviewed_by)!) } : {}),
     ...(str(b.reviewed_at) ? { reviewedAt: str(b.reviewed_at)! } : {}),
     ...(str(b.decision_notes) ? { decisionNotes: str(b.decision_notes)! } : {}),
   }));
@@ -516,8 +585,8 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
     ...(num(f.tach_start) !== undefined ? { tachStart: num(f.tach_start)! } : {}),
     ...(num(f.tach_end) !== undefined ? { tachEnd: num(f.tach_end)! } : {}),
     aircraftId: String(f.aircraft_id),
-    pilotId: String(f.pilot_id),
-    ...(str(f.instructor_id) ? { instructorId: str(f.instructor_id)! } : {}),
+    pilotId: toAppMemberId(String(f.pilot_id)),
+    ...(str(f.instructor_id) ? { instructorId: toAppMemberId(str(f.instructor_id)!) } : {}),
     ...(str(f.lesson_id) ? { lessonId: str(f.lesson_id)! } : {}),
     ...(str(f.booking_id) ? { bookingId: str(f.booking_id)! } : {}),
     landings: Number(f.landings ?? 0),
@@ -527,17 +596,17 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
     ...(str(f.remarks) ? { remarks: str(f.remarks)! } : {}),
     verificationStatus:
       (str(f.verification_status) as Flight["verificationStatus"]) ?? "verified",
-    ...(str(f.submitted_by) ? { submittedBy: str(f.submitted_by)! } : {}),
-    ...(str(f.verified_by) ? { verifiedBy: str(f.verified_by)! } : {}),
+    ...(str(f.submitted_by) ? { submittedBy: toAppMemberId(str(f.submitted_by)!) } : {}),
+    ...(str(f.verified_by) ? { verifiedBy: toAppMemberId(str(f.verified_by)!) } : {}),
     ...(str(f.verified_at) ? { verifiedAt: str(f.verified_at)! } : {}),
   }));
 
   const completions: Completion[] = (tables.completions ?? []).map((c) => ({
     id: String(c.id),
-    studentId: String(c.student_id),
+    studentId: toAppMemberId(String(c.student_id)),
     lessonId: String(c.lesson_id),
     date: String(c.date),
-    ...(str(c.instructor_id) ? { instructorId: str(c.instructor_id)! } : {}),
+    ...(str(c.instructor_id) ? { instructorId: toAppMemberId(str(c.instructor_id)!) } : {}),
     ...(num(c.grade) !== undefined ? { grade: num(c.grade)! } : {}),
     ...(str(c.flight_id) ? { flightId: str(c.flight_id)! } : {}),
   }));
@@ -545,14 +614,14 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
   const requests: RescheduleRequest[] = (tables.change_requests ?? []).map((r) => ({
     id: String(r.id),
     bookingId: String(r.booking_id),
-    studentId: String(r.student_id),
-    ...(str(r.instructor_id) ? { instructorId: str(r.instructor_id)! } : {}),
+    studentId: toAppMemberId(String(r.student_id)),
+    ...(str(r.instructor_id) ? { instructorId: toAppMemberId(str(r.instructor_id)!) } : {}),
     reason: (r.reason as RescheduleReason) ?? "weather",
     details: String(r.details ?? ""),
     proposedStart: String(r.proposed_start),
     proposedEnd: String(r.proposed_end),
     status: (r.status as RescheduleRequest["status"]) ?? "pending",
-    ...(str(r.reviewer_id) ? { reviewerId: str(r.reviewer_id)! } : {}),
+    ...(str(r.reviewer_id) ? { reviewerId: toAppMemberId(str(r.reviewer_id)!) } : {}),
     ...(str(r.notes) ? { notes: str(r.notes)! } : {}),
     ...(str(r.reviewed_at) ? { reviewedAt: str(r.reviewed_at)! } : {}),
     createdAt: String(r.created_at),
@@ -560,11 +629,11 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
 
   const exams: ExamResult[] = (tables.exam_results ?? []).map((e) => ({
     id: String(e.id),
-    studentId: String(e.student_id),
+    studentId: toAppMemberId(String(e.student_id)),
     subjectId: String(e.subject_id),
     score: Number(e.score ?? 0),
     passed: Boolean(e.passed),
-    signedBy: String(e.signed_by),
+    signedBy: toAppMemberId(String(e.signed_by)),
     date: String(e.date),
   }));
 
@@ -575,34 +644,34 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
     start: String(l.starts_at),
     end: String(l.ends_at),
     roomId: String(l.room_id),
-    instructorId: String(l.instructor_id),
-    enrolled: Array.isArray(l.enrolled) ? l.enrolled.map(String) : [],
-    attended: Array.isArray(l.attended) ? l.attended.map(String) : [],
+    instructorId: toAppMemberId(String(l.instructor_id)),
+    enrolled: Array.isArray(l.enrolled) ? l.enrolled.map((x) => toAppMemberId(String(x))) : [],
+    attended: Array.isArray(l.attended) ? l.attended.map((x) => toAppMemberId(String(x))) : [],
     signedOff: Boolean(l.signed_off),
   }));
 
   const duty: DutyRecord[] = (tables.duty_records ?? []).map((d) => ({
     id: String(d.id),
-    instructorId: String(d.instructor_id),
+    instructorId: toAppMemberId(String(d.instructor_id)),
     start: String(d.starts_at),
     ...(str(d.ends_at) ? { end: str(d.ends_at)! } : {}),
   }));
 
   const profileRequests: ProfileRequest[] = (tables.profile_requests ?? []).map((p) => ({
     id: String(p.id),
-    userId: String(p.user_id),
-    submittedBy: String(p.submitted_by),
+    userId: toAppMemberId(String(p.user_id)),
+    submittedBy: toAppMemberId(String(p.submitted_by)),
     changes: (p.changes as ProfileChanges) ?? {},
     before: (p.before_values as ProfileChanges) ?? {},
     status: (p.status as ProfileRequest["status"]) ?? "pending",
     createdAt: String(p.created_at),
     ...(str(p.reviewed_at) ? { reviewedAt: str(p.reviewed_at)! } : {}),
-    ...(str(p.reviewer_id) ? { reviewerId: str(p.reviewer_id)! } : {}),
+    ...(str(p.reviewer_id) ? { reviewerId: toAppMemberId(str(p.reviewer_id)!) } : {}),
     ...(str(p.notes) ? { notes: str(p.notes)! } : {}),
   }));
 
   const learningRecords: LearningRecord[] = (tables.learning_records ?? []).map((r) => {
-    const uid = String(r.user_id ?? "");
+    const uid = toAppMemberId(String(r.user_id ?? ""));
     return {
       id: String(r.id),
       userId: uid,
@@ -617,7 +686,7 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
 
   const readNotificationIds: Record<string, string[]> = {};
   for (const n of tables.notification_reads ?? []) {
-    const mid = String(n.member_id ?? "");
+    const mid = toAppMemberId(String(n.member_id ?? ""));
     const nid = String(n.notification_id ?? "");
     if (!mid || !nid) continue;
     readNotificationIds[mid] = [...(readNotificationIds[mid] ?? []), nid];
@@ -627,12 +696,12 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
     .map((a) => ({
       id: String(a.id),
       at: String(a.occurred_at),
-      actorId: String(a.actor_id),
+      actorId: toAppMemberId(String(a.actor_id)),
       actorName: String(a.actor_name),
       actorRole: (a.actor_role as Role) ?? "student",
       action: String(a.action),
       entityType: (a.entity_type as ActivityLog["entityType"]) ?? "user",
-      ...(str(a.entity_id) ? { entityId: str(a.entity_id)! } : {}),
+      ...(str(a.entity_id) ? { entityId: toAppMemberId(str(a.entity_id)!) } : {}),
       details: String(a.details ?? ""),
     }))
     .sort((a, b) => b.at.localeCompare(a.at));

@@ -1305,7 +1305,7 @@ function InteractiveAviationSky() {
 }
 
 function LoginPage() {
-  const { me, hydrated, noAccess, signOut, reload } = useStore();
+  const { data, me, hydrated, noAccess, signOut, reload, update } = useStore();
   const navigate = useNavigate();
 
   // Mode: "signin" | "signup"
@@ -1320,6 +1320,7 @@ function LoginPage() {
   // Create Account inputs
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
   const [verify, setVerify] = useState("");
   const [role, setRole] = useState<Role>("student");
   const [master, setMaster] = useState("");
@@ -1375,6 +1376,24 @@ function LoginPage() {
     if (mode === "signup") {
       if (!firstName.trim() || !lastName.trim()) {
         toast.error("Enter your first and last name.");
+        return;
+      }
+      const normPhone = phone.replace(/[\s\-()]/g, "");
+      if (normPhone.length < 7) {
+        toast.error("Enter a valid phone number.");
+        return;
+      }
+      const activeUsers = data.users.filter((u) => u.status === "active");
+      if (activeUsers.some((u) => u.email.toLowerCase() === clean.toLowerCase())) {
+        toast.error(
+          "An account with this email address already exists. Duplicate email addresses are not permitted.",
+        );
+        return;
+      }
+      if (activeUsers.some((u) => u.phone && u.phone.replace(/[\s\-()]/g, "") === normPhone)) {
+        toast.error(
+          "An account with this phone number already exists. Duplicate phone numbers are not permitted.",
+        );
         return;
       }
       if (password !== verify) {
@@ -1447,6 +1466,7 @@ function LoginPage() {
     const { error: regErr } = await db.rpc("register_member", {
       p_first: firstName.trim(),
       p_last: lastName.trim(),
+      p_phone: phone.trim(),
       p_role: role,
       p_master: role === "admin" ? master : null,
     });
@@ -1459,6 +1479,14 @@ function LoginPage() {
     }
 
     await reload();
+    if (phone.trim()) {
+      update((prev) => ({
+        ...prev,
+        users: prev.users.map((u) =>
+          u.email.toLowerCase() === clean.toLowerCase() ? { ...u, phone: phone.trim() } : u,
+        ),
+      }));
+    }
     setBusy(false);
     toast.success("Account created and saved to database — Welcome to SilverArrows!");
     void navigate({ to: "/dashboard" });
@@ -1839,7 +1867,7 @@ function LoginPage() {
                     <div className="space-y-1.5 text-left">
                       <div className="flex items-center justify-between">
                         <Label htmlFor="signupEmail" className="text-xs font-semibold">
-                          Email address
+                          Email address (Must be unique)
                         </Label>
                         <span className="font-mono text-[10px] text-muted-foreground">
                           Table Synced
@@ -1859,6 +1887,28 @@ function LoginPage() {
                           className="pl-9 text-xs bg-background/80"
                         />
                       </div>
+                    </div>
+
+                    <div className="space-y-1.5 text-left">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="signupPhone" className="text-xs font-semibold">
+                          Phone number (Must be unique)
+                        </Label>
+                        <span className="font-mono text-[10px] text-muted-foreground">
+                          Required
+                        </span>
+                      </div>
+                      <Input
+                        id="signupPhone"
+                        type="tel"
+                        autoComplete="tel"
+                        placeholder="+91 98100 00000"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        maxLength={30}
+                        required
+                        className="text-xs bg-background/80"
+                      />
                     </div>
                   </div>
 

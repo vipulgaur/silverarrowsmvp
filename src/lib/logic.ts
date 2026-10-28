@@ -871,9 +871,28 @@ export function profileProblem(
   if (typeof next.email !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next.email))
     return "Enter a valid email address.";
   if (
-    data.users.some((u) => u.id !== target.id && u.email.toLowerCase() === next.email.toLowerCase())
+    data.users.some(
+      (u) =>
+        u.id !== target.id &&
+        u.status === "active" &&
+        u.email.toLowerCase() === next.email.toLowerCase(),
+    )
   )
     return "This email is already used by another member.";
+  if ("phone" in changes && typeof next.phone === "string" && next.phone.trim()) {
+    const normPhone = next.phone.replace(/[\s\-()]/g, "");
+    if (
+      normPhone.length >= 7 &&
+      data.users.some(
+        (u) =>
+          u.id !== target.id &&
+          u.status === "active" &&
+          u.phone &&
+          u.phone.replace(/[\s\-()]/g, "") === normPhone,
+      )
+    )
+      return "This phone number is already registered to another member.";
+  }
   for (const key of Object.keys(PROFILE_FIELDS) as (keyof ProfileChanges)[]) {
     const value = changes[key];
     if (value === undefined) continue;

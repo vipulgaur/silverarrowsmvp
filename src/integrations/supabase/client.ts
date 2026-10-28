@@ -127,6 +127,11 @@ function findOrCreateLocalUser(email: string, preferredRole?: Role, fullName?: s
   return newUser;
 }
 
+const isTestEnv =
+  typeof import.meta !== "undefined" &&
+  (import.meta.env?.MODE === "test" ||
+    Boolean((import.meta.env as Record<string, unknown>)?.VITEST));
+
 const hybridAuth = {
   async signInWithPassword({ email, password }: { email: string; password?: string }) {
     const clean = email.trim().toLowerCase();
@@ -149,44 +154,50 @@ const hybridAuth = {
     // Clear any stale demo session first
     setStoredDemoSession(null);
 
-    try {
-      let res = await realSupabase.auth.signInWithPassword({
-        email: clean,
-        password: testPassword,
-      });
-
-      // If account does not exist in Supabase auth yet, auto-provision it with the testing password
-      if (res.error && (res.error.message?.toLowerCase().includes("invalid login credentials") || res.error.message?.toLowerCase().includes("user not found"))) {
-        const signupRes = await realSupabase.auth.signUp({
+    if (!isTestEnv) {
+      try {
+        let res = await realSupabase.auth.signInWithPassword({
           email: clean,
           password: testPassword,
         });
-        if (!signupRes.error && signupRes.data.user) {
-          res = await realSupabase.auth.signInWithPassword({
+
+        // If account does not exist in Supabase auth yet, auto-provision it with the testing password
+        if (
+          res.error &&
+          (res.error.message?.toLowerCase().includes("invalid login credentials") ||
+            res.error.message?.toLowerCase().includes("user not found"))
+        ) {
+          const signupRes = await realSupabase.auth.signUp({
             email: clean,
             password: testPassword,
           });
+          if (!signupRes.error && signupRes.data.user) {
+            res = await realSupabase.auth.signInWithPassword({
+              email: clean,
+              password: testPassword,
+            });
+          }
         }
-      }
 
-      if (!res.error && res.data.user) {
-        // Link member in tenant_members table so RLS and Realtime have profile_id set
-        const role = inferRoleFromEmail(clean);
-        const namePart = clean.split("@")[0] || "Pilot";
-        try {
-          await realSupabase.rpc("register_member", {
-            p_first: namePart,
-            p_last: "Member",
-            p_role: role,
-            p_master: role === "admin" ? "Vipul@1011" : null,
-          });
-        } catch {
-          /* ignore rpc errors if already registered */
+        if (!res.error && res.data.user) {
+          // Link member in tenant_members table so RLS and Realtime have profile_id set
+          const role = inferRoleFromEmail(clean);
+          const namePart = clean.split("@")[0] || "Pilot";
+          try {
+            await realSupabase.rpc("register_member", {
+              p_first: namePart,
+              p_last: "Member",
+              p_role: role,
+              p_master: role === "admin" ? "Vipul@1011" : null,
+            });
+          } catch {
+            /* ignore rpc errors if already registered */
+          }
+          return res;
         }
-        return res;
+      } catch {
+        /* fallback to local demo session if network/auth unavailable */
       }
-    } catch {
-      /* fallback to local demo session if network/auth unavailable */
     }
 
     // Fallback to local academy store so demo/custom emails always sign into their own profile
@@ -219,17 +230,19 @@ const hybridAuth = {
     const clean = email.trim().toLowerCase();
     setStoredDemoSession(null);
 
-    try {
-      const res = await realSupabase.auth.signUp({
-        email: clean,
-        password: password || "demo12345",
-        options,
-      });
-      if (!res.error && res.data.session) {
-        return res;
+    if (!isTestEnv) {
+      try {
+        const res = await realSupabase.auth.signUp({
+          email: clean,
+          password: password || "demo12345",
+          options,
+        });
+        if (!res.error && res.data.session) {
+          return res;
+        }
+      } catch {
+        /* fallback to local signup */
       }
-    } catch {
-      /* fallback to local signup */
     }
 
     const localUser = findOrCreateLocalUser(clean);
@@ -252,11 +265,14 @@ const hybridAuth = {
   async signOut() {
     setStoredDemoSession(null);
     notifyDemoListeners("SIGNED_OUT", null);
-    try {
-      return await realSupabase.auth.signOut();
-    } catch {
-      return { error: null };
+    if (!isTestEnv) {
+      try {
+        return await realSupabase.auth.signOut();
+      } catch {
+        return { error: null };
+      }
     }
+    return { error: null };
   },
 
   async getUser() {
@@ -264,11 +280,13 @@ const hybridAuth = {
     if (demo) {
       return { data: { user: demo.user }, error: null };
     }
-    try {
-      const res = await realSupabase.auth.getUser();
-      if (res.data?.user) return res;
-    } catch {
-      /* ignore */
+    if (!isTestEnv) {
+      try {
+        const res = await realSupabase.auth.getUser();
+        if (res.data?.user) return res;
+      } catch {
+        /* ignore */
+      }
     }
     return { data: { user: null }, error: null };
   },
@@ -278,33 +296,38 @@ const hybridAuth = {
     if (demo) {
       return { data: { session: demo }, error: null };
     }
-    try {
-      return await realSupabase.auth.getSession();
-    } catch {
-      return { data: { session: null }, error: null };
+    if (!isTestEnv) {
+      try {
+        return await realSupabase.auth.getSession();
+      } catch {
+        return { data: { session: null }, error: null };
+      }
     }
+    return { data: { session: null }, error: null };
   },
 
   onAuthStateChange(callback: AuthListener) {
     demoListeners.add(callback);
-    const realSub = realSupabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_OUT") {
-        // Only propagate SIGNED_OUT if no demo session is active
-        if (!getStoredDemoSession()) {
-          callback(event, null);
-        }
-      } else if (session?.user) {
-        setStoredDemoSession(null);
-        callback(event, {
-          user: {
-            id: session.user.id,
-            email: session.user.email ?? "",
-            user_metadata: session.user.user_metadata as { role?: Role },
-          },
-          isDemoFallback: false,
-        });
-      }
-    });
+    const realSub = !isTestEnv
+      ? realSupabase.auth.onAuthStateChange((event, session) => {
+          if (event === "SIGNED_OUT") {
+            // Only propagate SIGNED_OUT if no demo session is active
+            if (!getStoredDemoSession()) {
+              callback(event, null);
+            }
+          } else if (session?.user) {
+            setStoredDemoSession(null);
+            callback(event, {
+              user: {
+                id: session.user.id,
+                email: session.user.email ?? "",
+                user_metadata: session.user.user_metadata as { role?: Role },
+              },
+              isDemoFallback: false,
+            });
+          }
+        })
+      : { data: { subscription: { unsubscribe() {} } } };
 
     return {
       data: {
@@ -327,7 +350,7 @@ export const supabase = new Proxy(realSupabase, {
     if (prop === "rpc") {
       return async (fn: string, args: Record<string, unknown>) => {
         const demo = getStoredDemoSession();
-        if (!demo) {
+        if (!demo && !isTestEnv) {
           try {
             const res = await target.rpc(fn, args);
             if (!res.error) return res;
@@ -338,6 +361,7 @@ export const supabase = new Proxy(realSupabase, {
         if (fn === "register_member") {
           const first = String(args.p_first ?? "").trim();
           const last = String(args.p_last ?? "").trim();
+          const phone = typeof args.p_phone === "string" ? args.p_phone.trim() : undefined;
           const role = (args.p_role ?? "student") as Role;
           const fullName = `${first} ${last}`.trim() || "Pilot Member";
           const session = getStoredDemoSession();
@@ -351,6 +375,7 @@ export const supabase = new Proxy(realSupabase, {
               status: "active" as const,
             }),
             name: fullName,
+            ...(phone ? { phone } : {}),
             role,
             callsign: `${first.slice(0, 1)}${last.slice(0, 2)}`.toUpperCase() || "PLT",
             programId: role === "student" ? "p-ppl" : undefined,

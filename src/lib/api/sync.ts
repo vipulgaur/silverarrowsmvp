@@ -1,12 +1,20 @@
 /** Reads and writes the academy's records in Lovable Cloud. Row-level security decides what each member may see or change. */
 import { supabase } from "@/integrations/supabase/client";
 import type { AppData } from "@/lib/types";
-import { TABLE_ORDER, fromTables, toTables, type Changes, type TableName } from "./mapping";
+import {
+  TABLE_ORDER,
+  fromTables,
+  toAppMemberId,
+  toTables,
+  type Changes,
+  type TableName,
+} from "./mapping";
 
 // Generated table types are strict; this layer writes rows already shaped by the mapping module.
 type QueryChain = {
   select: (cols: string) => QueryChain;
   eq: (col: string, val: unknown) => QueryChain;
+  ilike: (col: string, val: unknown) => QueryChain;
   is: (col: string, val: unknown) => QueryChain;
   in: (col: string, vals: readonly unknown[]) => QueryChain;
   limit: (count: number) => QueryChain;
@@ -45,57 +53,63 @@ export interface Loaded {
 
 export async function loadAcademy(userId: string): Promise<Loaded | null> {
   const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+  const { data: authData } = await supabase.auth.getUser();
+  const userEmail = authData?.user?.email?.trim().toLowerCase();
+
   let membership: Record<string, unknown> | null = null;
   if (isUuid) {
     const { data, error } = await db
       .from("tenant_members")
-      .select("tenant_id, id")
+      .select("tenant_id, id, email, status, archived_at")
       .eq("profile_id", userId)
-      .eq("status", "active")
-      .is("archived_at", null)
       .limit(1)
       .maybeSingle();
-    if (error) throw new Error(error.message);
-    membership = data;
+    if (!error && data) {
+      membership = data;
+      // Auto-recover if the authenticated user's linked membership row was accidentally archived
+      if (data.status === "deleted" || data.archived_at !== null) {
+        await db
+          .from("tenant_members")
+          .update({ status: "active", archived_at: null, deleted_at: null, deleted_by: null })
+          .eq("id", data.id);
+      }
+    }
   }
 
   // If not linked by profile_id yet, link by the authenticated user's email
-  if (!membership) {
-    const { data: authData } = await supabase.auth.getUser();
-    const userEmail = authData?.user?.email?.trim().toLowerCase();
-    if (userEmail) {
-      const { data: byEmail } = await db
-        .from("tenant_members")
-        .select("tenant_id, id")
-        .ilike("email", userEmail)
-        .eq("status", "active")
-        .is("archived_at", null)
-        .limit(1)
-        .maybeSingle();
+  if (!membership && userEmail) {
+    const { data: byEmail } = await db
+      .from("tenant_members")
+      .select("tenant_id, id, email, status, archived_at")
+      .ilike("email", userEmail)
+      .limit(1)
+      .maybeSingle();
 
-      if (byEmail) {
-        membership = byEmail;
+    if (byEmail) {
+      membership = byEmail;
+      if (byEmail.status === "deleted" || byEmail.archived_at !== null) {
         await db
           .from("tenant_members")
-          .update({ profile_id: userId })
+          .update({ status: "active", archived_at: null, deleted_at: null, deleted_by: null })
           .eq("id", byEmail.id);
-      } else {
-        try {
-          const namePart = userEmail.split("@")[0] || "Pilot";
-          const res = await supabase.rpc("register_member", {
-            p_first: namePart,
-            p_last: "Member",
-            p_role: "student",
-          });
-          if (res?.data) {
-            membership = {
-              tenant_id: "5a0e0000-0000-4000-8000-000000000001",
-              id: res.data as string,
-            };
-          }
-        } catch {
-          /* ignore rpc fallback */
+      }
+    } else {
+      try {
+        const namePart = userEmail.split("@")[0] || "Pilot";
+        const res = await supabase.rpc("register_member", {
+          p_first: namePart,
+          p_last: "Member",
+          p_role: "student",
+        });
+        if (res?.data) {
+          membership = {
+            tenant_id: "5a0e0000-0000-4000-8000-000000000001",
+            id: res.data as string,
+            email: userEmail,
+          };
         }
+      } catch {
+        /* ignore rpc fallback */
       }
     }
   }
@@ -122,7 +136,7 @@ export async function loadAcademy(userId: string): Promise<Loaded | null> {
   return {
     data: fromTables(Object.fromEntries(results) as Record<TableName, Record<string, unknown>[]>),
     tenantId,
-    meId: membership.id as string,
+    meId: toAppMemberId(membership.id as string, (membership.email as string) || userEmail),
   };
 }
 
