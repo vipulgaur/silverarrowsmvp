@@ -33,7 +33,7 @@ import { LiveIstClock } from "@/components/live-ist-clock";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useTheme } from "@/components/theme-provider";
 import { recordUserLoginSession } from "@/lib/privacy-tracker";
-import { isUserPendingApproval } from "@/lib/logic";
+import { isUserPendingApproval, SOLE_ADMIN_EMAIL, validateAccountCreation } from "@/lib/logic";
 import { playNotificationSound } from "@/lib/notification-sound";
 import { cn } from "@/lib/utils";
 
@@ -71,12 +71,12 @@ export interface TestingPersona {
 export const TESTING_USERS: TestingPersona[] = [
   {
     id: "u-admin",
-    name: "Sakshi Gaur",
+    name: "System Administrator",
     role: "admin",
-    roleTitle: "Head of Training & Operations (Admin)",
-    email: "sakshi@flysilverarrows.com",
-    callsign: "SKG",
-    avatar: "SG",
+    roleTitle: "Head of Training & Operations (Sole Admin)",
+    email: SOLE_ADMIN_EMAIL,
+    callsign: "ADM",
+    avatar: "SA",
     details: "Full system administration, user management, audit logs, 3D aircraft atlas, syllabus control",
     stage: "Operations Administrator",
     accent: "#8B5CF6",
@@ -1307,7 +1307,7 @@ function InteractiveAviationSky() {
 }
 
 function LoginPage() {
-  const { data, me, hydrated, noAccess, signOut, reload, update } = useStore();
+  const { data, me, hydrated, noAccess, signOut, reload } = useStore();
   const navigate = useNavigate();
 
   // Mode: "signin" | "signup"
@@ -1325,7 +1325,6 @@ function LoginPage() {
   const [phone, setPhone] = useState("");
   const [verify, setVerify] = useState("");
   const [role, setRole] = useState<Role>("student");
-  const [master, setMaster] = useState("");
   const [busy, setBusy] = useState(false);
 
   const passwordInputRef = useRef<HTMLInputElement | null>(null);
@@ -1379,6 +1378,81 @@ function LoginPage() {
     }
   }, [hydrated, me, navigate]);
 
+  // Live validation feedback during account creation
+  const liveSignupError = useMemo(() => {
+    if (mode !== "signup") return null;
+    const f = firstName.trim();
+    const l = lastName.trim();
+    const e = email.trim().toLowerCase();
+    const p = phone.trim();
+    if (!f && !l && !e && !p) return null;
+
+    const activeMembers = data.users.filter((u) => u.status !== "deleted");
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+    const fullName = `${f} ${l}`.trim();
+
+    if (f) {
+      const fNorm = norm(f);
+      if (fNorm === "sakshi" || fNorm === "admin" || fNorm === "administrator") {
+        return `Name "${f}" is reserved by system administration and cannot be registered.`;
+      }
+      const fullNorm = norm(fullName);
+      const nameMatch = activeMembers.find((u) => {
+        const uNorm = norm(u.name);
+        const uFirst = uNorm.split(" ")[0] ?? "";
+        return (
+          uNorm === fullNorm ||
+          uNorm === fNorm ||
+          (!l && uFirst === fNorm && fNorm.length >= 3)
+        );
+      });
+      if (nameMatch) {
+        return `An account for "${nameMatch.name}" (${nameMatch.email}) already exists. Anyone with the same name cannot register a duplicate account or share an email ID.`;
+      }
+    }
+
+    if (e) {
+      if (e === SOLE_ADMIN_EMAIL || e === "sakshi@flysilverarrows.com") {
+        return `The email ID "${e}" is reserved for the sole System Administrator and cannot be registered.`;
+      }
+      const emailMatch = activeMembers.find((u) => u.email.trim().toLowerCase() === e);
+      if (emailMatch) {
+        return `An account with email ID "${e}" already exists (${emailMatch.name}). Anyone with the same name cannot have the same email ID.`;
+      }
+      const prefix = e.split("@")[0];
+      const domain = e.split("@")[1];
+      if (prefix && (domain === "flysilverarrows.com" || domain === "silverarrows.aero")) {
+        const prefixMatch = activeMembers.find(
+          (u) => u.email.trim().toLowerCase().split("@")[0] === prefix,
+        );
+        if (prefixMatch) {
+          return `The academy email identifier "${prefix}@..." is already assigned to ${prefixMatch.name}.`;
+        }
+      }
+    }
+
+    if (p) {
+      const normPhone = p.replace(/[\s\-().]/g, "");
+      if (normPhone.length >= 7) {
+        const phoneMatch = activeMembers.find(
+          (u) => u.phone && u.phone.replace(/[\s\-().]/g, "") === normPhone,
+        );
+        if (phoneMatch) {
+          return `An account with phone number "${p}" already exists (${phoneMatch.name}).`;
+        }
+      }
+    }
+
+    if (f && l && e && p) {
+      return validateAccountCreation(
+        { firstName: f, lastName: l, email: e, phone: p, role },
+        data.users,
+      );
+    }
+
+    return null;
+  }, [mode, firstName, lastName, email, phone, role, data.users]);
+
   // Handle Form Submission (Sign In or Create Account)
   async function submitAuth(e: FormEvent) {
     e.preventDefault();
@@ -1393,34 +1467,22 @@ function LoginPage() {
     }
 
     if (mode === "signup") {
-      if (!firstName.trim() || !lastName.trim()) {
-        toast.error("Enter your first and last name.");
-        return;
-      }
-      const normPhone = phone.replace(/[\s\-()]/g, "");
-      if (normPhone.length < 7) {
-        toast.error("Enter a valid phone number.");
-        return;
-      }
-      const activeUsers = data.users.filter((u) => u.status === "active");
-      if (activeUsers.some((u) => u.email.toLowerCase() === clean.toLowerCase())) {
-        toast.error(
-          "An account with this email address already exists. Duplicate email addresses are not permitted.",
-        );
-        return;
-      }
-      if (activeUsers.some((u) => u.phone && u.phone.replace(/[\s\-()]/g, "") === normPhone)) {
-        toast.error(
-          "An account with this phone number already exists. Duplicate phone numbers are not permitted.",
-        );
+      const validationErr = validateAccountCreation(
+        {
+          firstName,
+          lastName,
+          email: clean,
+          phone,
+          role,
+        },
+        data.users,
+      );
+      if (validationErr) {
+        toast.error(validationErr);
         return;
       }
       if (password !== verify) {
         toast.error("Passwords do not match.");
-        return;
-      }
-      if (role === "admin" && master !== "admin-master-key" && master !== FIXED_TESTING_PASSWORD) {
-        toast.error("Invalid master key for administrator registration.");
         return;
       }
     } else {
@@ -1496,7 +1558,7 @@ function LoginPage() {
       p_email: clean.toLowerCase(),
       p_phone: phone.trim(),
       p_role: role,
-      p_master: role === "admin" ? master : null,
+      p_master: null,
     });
 
     if (regErr) {
@@ -1508,14 +1570,9 @@ function LoginPage() {
 
     await reload();
     setBusy(false);
-    if (role === "admin") {
-      toast.success("Administrator account created and saved to database!");
-      void navigate({ to: "/dashboard" });
-    } else {
-      toast.success(
-        "Account registered in database! Access will unlock automatically as soon as the Administrator approves your login.",
-      );
-    }
+    toast.success(
+      "Account registered in database! Access will unlock automatically as soon as the Administrator approves your login.",
+    );
   }
 
   return (
@@ -1719,9 +1776,9 @@ function LoginPage() {
                       className="w-full text-xs font-medium bg-background"
                     >
                       <option value="">-- Choose an academy user to login --</option>
-                      <optgroup label="Administrator">
+                      <optgroup label="Administrator (Sole Admin)">
                         <option value="u-admin">
-                          Sakshi Gaur · Administrator (sakshi@flysilverarrows.com)
+                          System Administrator · Sole Admin (admin@flysilverarrows.com)
                         </option>
                       </optgroup>
                       <optgroup label="Flight Instructors (CFI)">
@@ -1869,173 +1926,167 @@ function LoginPage() {
 
               {/* ────────────────────── MODE B: CREATE NEW ACCOUNT (BALANCED 2-COLUMN LANDSCAPE) ────────────────────── */}
               {mode === "signup" && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start animate-in fade-in duration-300">
-                  {/* Left Column: Personal Information */}
-                  <div className="space-y-3 rounded-2xl border border-border/80 bg-background/50 p-4">
-                    <div className="font-mono text-[11px] font-bold tracking-wider text-primary uppercase text-left">
-                      Member Information
+                <div className="space-y-4 animate-in fade-in duration-300">
+                  {liveSignupError && (
+                    <div
+                      data-testid="signup-validation-alert"
+                      role="alert"
+                      className="flex items-start gap-2.5 rounded-2xl border border-destructive/50 bg-destructive/10 p-3.5 text-xs text-destructive shadow-xs"
+                    >
+                      <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5 text-left">
+                        <div className="font-bold">Account Validation Restricted</div>
+                        <div className="text-[11px] leading-relaxed">{liveSignupError}</div>
+                      </div>
                     </div>
+                  )}
 
-                    <div className="grid grid-cols-2 gap-3 text-left">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="firstName" className="text-xs font-semibold">
-                          First name
-                        </Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+                    {/* Left Column: Personal Information */}
+                    <div className="space-y-3 rounded-2xl border border-border/80 bg-background/50 p-4">
+                      <div className="font-mono text-[11px] font-bold tracking-wider text-primary uppercase text-left">
+                        Member Information (Unique Name &amp; Email Required)
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-left">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="firstName" className="text-xs font-semibold">
+                            First name
+                          </Label>
+                          <Input
+                            id="firstName"
+                            autoComplete="given-name"
+                            placeholder="e.g. Kabir"
+                            value={firstName}
+                            onChange={(e) => setFirstName(e.target.value)}
+                            maxLength={100}
+                            required
+                            className="text-xs bg-background/80"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="lastName" className="text-xs font-semibold">
+                            Last name
+                          </Label>
+                          <Input
+                            id="lastName"
+                            autoComplete="family-name"
+                            placeholder="e.g. Mehta"
+                            value={lastName}
+                            onChange={(e) => setLastName(e.target.value)}
+                            maxLength={100}
+                            required
+                            className="text-xs bg-background/80"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 text-left">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="signupEmail" className="text-xs font-semibold">
+                            Email address (Must be unique)
+                          </Label>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            Unique ID
+                          </span>
+                        </div>
+                        <div className="relative">
+                          <Mail className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                          <Input
+                            id="signupEmail"
+                            type="email"
+                            autoComplete="email"
+                            placeholder="firstname.lastname@flysilverarrows.com"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            maxLength={255}
+                            required
+                            className="pl-9 text-xs bg-background/80"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 text-left">
+                        <div className="flex items-center justify-between">
+                          <Label htmlFor="signupPhone" className="text-xs font-semibold">
+                            Phone number (Must be unique)
+                          </Label>
+                          <span className="font-mono text-[10px] text-muted-foreground">
+                            Required
+                          </span>
+                        </div>
                         <Input
-                          id="firstName"
-                          autoComplete="given-name"
-                          placeholder="e.g. Kabir"
-                          value={firstName}
-                          onChange={(e) => {
-                            setFirstName(e.target.value);
-                            if (!email || email.includes("@flysilverarrows.com")) {
-                              setEmail(
-                                `${e.target.value.toLowerCase().replace(/[^a-z0-9]/g, "")}@flysilverarrows.com`,
-                              );
-                            }
-                          }}
-                          maxLength={100}
+                          id="signupPhone"
+                          type="tel"
+                          autoComplete="tel"
+                          placeholder="+91 98100 00000"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          maxLength={30}
                           required
                           className="text-xs bg-background/80"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="lastName" className="text-xs font-semibold">
-                          Last name
-                        </Label>
-                        <Input
-                          id="lastName"
-                          autoComplete="family-name"
-                          placeholder="e.g. Mehta"
-                          value={lastName}
-                          onChange={(e) => setLastName(e.target.value)}
-                          maxLength={100}
-                          required
-                          className="text-xs bg-background/80"
-                        />
-                      </div>
                     </div>
 
-                    <div className="space-y-1.5 text-left">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="signupEmail" className="text-xs font-semibold">
-                          Email address (Must be unique)
-                        </Label>
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          Table Synced
-                        </span>
+                    {/* Right Column: Role & Security Credentials */}
+                    <div className="space-y-3 rounded-2xl border border-border/80 bg-background/50 p-4">
+                      <div className="font-mono text-[11px] font-bold tracking-wider text-primary uppercase text-left">
+                        Role &amp; Security
                       </div>
-                      <div className="relative">
-                        <Mail className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                        <Input
-                          id="signupEmail"
-                          type="email"
-                          autoComplete="email"
-                          placeholder="firstname@flysilverarrows.com"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          maxLength={255}
-                          required
-                          className="pl-9 text-xs bg-background/80"
-                        />
-                      </div>
-                    </div>
 
-                    <div className="space-y-1.5 text-left">
-                      <div className="flex items-center justify-between">
-                        <Label htmlFor="signupPhone" className="text-xs font-semibold">
-                          Phone number (Must be unique)
+                      <div className="space-y-1.5 text-left">
+                        <Label htmlFor="signupRole" className="text-xs font-semibold">
+                          Academy Role
                         </Label>
-                        <span className="font-mono text-[10px] text-muted-foreground">
-                          Required
-                        </span>
+                        <NativeSelect
+                          id="signupRole"
+                          value={role}
+                          onChange={(e) => setRole(e.target.value as Role)}
+                          className="text-xs bg-background/80 font-medium"
+                        >
+                          <option value="student">Student Pilot (EASA PPL / CPL)</option>
+                          <option value="instructor">Flight Instructor (CFI)</option>
+                          <option value="ground">Ground School Instructor</option>
+                        </NativeSelect>
+                        <p className="text-[10.5px] text-muted-foreground">
+                          Administrator access is strictly restricted to the sole system account (admin@flysilverarrows.com).
+                        </p>
                       </div>
-                      <Input
-                        id="signupPhone"
-                        type="tel"
-                        autoComplete="tel"
-                        placeholder="+91 98100 00000"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        maxLength={30}
-                        required
-                        className="text-xs bg-background/80"
-                      />
-                    </div>
-                  </div>
 
-                  {/* Right Column: Role & Security Credentials */}
-                  <div className="space-y-3 rounded-2xl border border-border/80 bg-background/50 p-4">
-                    <div className="font-mono text-[11px] font-bold tracking-wider text-primary uppercase text-left">
-                      Role & Security
-                    </div>
-
-                    <div className="space-y-1.5 text-left">
-                      <Label htmlFor="signupRole" className="text-xs font-semibold">
-                        Academy Role
-                      </Label>
-                      <NativeSelect
-                        id="signupRole"
-                        value={role}
-                        onChange={(e) => setRole(e.target.value as Role)}
-                        className="text-xs bg-background/80 font-medium"
-                      >
-                        <option value="student">Student Pilot (EASA PPL / CPL)</option>
-                        <option value="instructor">Flight Instructor (CFI)</option>
-                        <option value="ground">Ground School Instructor</option>
-                        <option value="admin">Administrator (Requires Master Key)</option>
-                      </NativeSelect>
-                    </div>
-
-                    {role === "admin" && (
-                      <div className="space-y-1.5 rounded-xl border border-purple-500/30 bg-purple-500/10 p-2.5 text-left">
-                        <Label htmlFor="masterKey" className="text-xs font-semibold text-purple-700 dark:text-purple-300">
-                          Master Key (Admin only)
-                        </Label>
-                        <Input
-                          id="masterKey"
-                          type="password"
-                          placeholder="Enter admin master key"
-                          value={master}
-                          onChange={(e) => setMaster(e.target.value)}
-                          required
-                          className="text-xs bg-background/90"
-                        />
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-3 text-left">
-                      <div className="space-y-1.5">
-                        <Label htmlFor="signupPassword" className="text-xs font-semibold">
-                          Password
-                        </Label>
-                        <Input
-                          id="signupPassword"
-                          type="password"
-                          autoComplete="new-password"
-                          placeholder="••••••••"
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          minLength={4}
-                          required
-                          className="text-xs bg-background/80 font-mono"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label htmlFor="verifyPassword" className="text-xs font-semibold">
-                          Verify password
-                        </Label>
-                        <Input
-                          id="verifyPassword"
-                          type="password"
-                          autoComplete="new-password"
-                          placeholder="••••••••"
-                          value={verify}
-                          onChange={(e) => setVerify(e.target.value)}
-                          minLength={4}
-                          required
-                          className="text-xs bg-background/80 font-mono"
-                        />
+                      <div className="grid grid-cols-2 gap-3 text-left">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="signupPassword" className="text-xs font-semibold">
+                            Password
+                          </Label>
+                          <Input
+                            id="signupPassword"
+                            type="password"
+                            autoComplete="new-password"
+                            placeholder="••••••••"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            minLength={4}
+                            required
+                            className="text-xs bg-background/80 font-mono"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="verifyPassword" className="text-xs font-semibold">
+                            Verify password
+                          </Label>
+                          <Input
+                            id="verifyPassword"
+                            type="password"
+                            autoComplete="new-password"
+                            placeholder="••••••••"
+                            value={verify}
+                            onChange={(e) => setVerify(e.target.value)}
+                            minLength={4}
+                            required
+                            className="text-xs bg-background/80 font-mono"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2046,7 +2097,7 @@ function LoginPage() {
               <div className="mt-6 space-y-3">
                 <Button
                   type="submit"
-                  disabled={busy || !hydrated}
+                  disabled={busy || !hydrated || Boolean(mode === "signup" && liveSignupError)}
                   className="w-full h-11 font-bold text-xs shadow-lg transition-all"
                   data-testid="auth-submit-btn"
                 >

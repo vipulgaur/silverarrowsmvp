@@ -56,7 +56,7 @@ const str = (v: unknown): string | undefined =>
   v === null || v === undefined || v === "" ? undefined : String(v);
 
 export const APP_TO_DB_MEMBER_ID: Record<string, string> = {
-  "u-admin": "m-fd7e4922f88e467683f0ef8e62ca2b05",
+  "u-admin": "m-21645e1e87914a0994e1167c9de40cb0",
   "u-vpl": "m-2326d678c3bf48e199818e105abe8e98",
   "u-prn": "m-a73723d804884a57896a629899673193",
   "u-anj": "m-93fba566ab0b4b7d996915d2550e9a6a",
@@ -65,12 +65,18 @@ export const APP_TO_DB_MEMBER_ID: Record<string, string> = {
   "u-lnl": "m-dbc9b6e3a6284caf8e04980311992e57",
 };
 
-export const DB_TO_APP_MEMBER_ID: Record<string, string> = Object.fromEntries(
-  Object.entries(APP_TO_DB_MEMBER_ID).map(([appId, dbId]) => [dbId, appId]),
-);
+export const DB_TO_APP_MEMBER_ID: Record<string, string> = {
+  ...Object.fromEntries(
+    Object.entries(APP_TO_DB_MEMBER_ID).map(([appId, dbId]) => [dbId, appId]),
+  ),
+  "u-demo-admin": "u-admin",
+  "m-fd7e4922f88e467683f0ef8e62ca2b05": "u-admin",
+};
+
+export const SOLE_ADMIN_EMAIL = "admin@flysilverarrows.com";
 
 export const EMAIL_TO_APP_MEMBER_ID: Record<string, string> = {
-  "sakshi@flysilverarrows.com": "u-admin",
+  "admin@flysilverarrows.com": "u-admin",
   "vipul@flysilverarrows.com": "u-vpl",
   "priya@flysilverarrows.com": "u-prn",
   "anujay@flysilverarrows.com": "u-anj",
@@ -381,14 +387,31 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
   const rawUsers: User[] = (tables.tenant_members ?? []).map((m) => {
     const rawId = String(m.id);
     const email = String(m.email ?? "");
-    const id = toAppMemberId(rawId, email);
+    const cleanEmail = email.trim().toLowerCase();
+    const isSoleAdmin = cleanEmail === SOLE_ADMIN_EMAIL;
+    const id = isSoleAdmin
+      ? "u-admin"
+      : EMAIL_TO_APP_MEMBER_ID[cleanEmail] ??
+        (rawId === "m-fd7e4922f88e467683f0ef8e62ca2b05" || rawId === "u-demo-admin"
+          ? rawId
+          : toAppMemberId(rawId, email));
     const mc = num(m.medical_class);
+    const rawRole = roleMap.get(rawId) ?? roleMap.get(id) ?? "student";
+    // Enforce single-admin rule: only admin@flysilverarrows.com can hold the admin role
+    const effectiveRole: Role = isSoleAdmin
+      ? "admin"
+      : rawRole === "admin"
+        ? "student"
+        : rawRole;
+    const rawReason = str(m.status_reason);
+    const isDeclinedOrDeleted =
+      !isSoleAdmin && (m.status === "deleted" || rawReason === "DECLINED_BY_ADMIN");
     return {
       id,
       name: String(m.name ?? ""),
       email,
-      role: roleMap.get(rawId) ?? roleMap.get(id) ?? "student",
-      status: m.status === "deleted" ? "deleted" : "active",
+      role: effectiveRole,
+      status: isDeclinedOrDeleted ? "deleted" : "active",
       ...(str(m.phone) ? { phone: str(m.phone)! } : {}),
       ...(str(m.callsign) ? { callsign: str(m.callsign)! } : {}),
       ...(str(m.program_id) ? { programId: str(m.program_id)! } : {}),
@@ -403,7 +426,7 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
       ...(num(m.prior_minutes) !== undefined ? { priorMinutes: num(m.prior_minutes)! } : {}),
       ...(str(m.deleted_by) ? { deletedBy: toAppMemberId(str(m.deleted_by)!) } : {}),
       ...(str(m.deleted_at) ? { deletedAt: str(m.deleted_at)! } : {}),
-      ...(str(m.status_reason) ? { statusReason: str(m.status_reason)! } : {}),
+      ...(!isSoleAdmin && rawReason ? { statusReason: rawReason } : {}),
       ...(str(m.address) ? { address: str(m.address)! } : {}),
       ...(str(m.post_code) ? { postCode: str(m.post_code)! } : {}),
       ...(str(m.city) ? { city: str(m.city)! } : {}),

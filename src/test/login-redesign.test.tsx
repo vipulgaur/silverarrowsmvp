@@ -33,13 +33,15 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
     window.localStorage.clear();
   });
 
-  it("maintains the controlled testing users directory with {firstname}@flysilverarrows.com and private password", () => {
+  it("maintains the controlled testing users directory with admin@flysilverarrows.com as sole admin and private password", () => {
     expect(FIXED_TESTING_PASSWORD).toBe("Vipul@1011");
 
-    // Admin
-    const admin = TESTING_USERS.find((u) => u.name === "Sakshi Gaur");
-    expect(admin).toBeDefined();
-    expect(admin?.email).toBe("sakshi@flysilverarrows.com");
+    // Sole Admin
+    const admins = TESTING_USERS.filter((u) => u.role === "admin");
+    expect(admins.length).toBe(1);
+    const admin = admins[0];
+    expect(admin?.name).toBe("System Administrator");
+    expect(admin?.email).toBe("admin@flysilverarrows.com");
     expect(admin?.role).toBe("admin");
 
     // Chief CFI
@@ -175,6 +177,34 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
         expect(registered?.status).toBe("active");
       },
       { timeout: 4000 },
+    );
+  });
+
+  it("blocks duplicate names, reserved names, and duplicate email IDs during registration", () => {
+    const { container } = renderLoginPage();
+    fireEvent.click(screen.getByTestId("mode-tab-signup"));
+
+    const firstNameInput = container.querySelector("#firstName") as HTMLInputElement;
+    const lastNameInput = container.querySelector("#lastName") as HTMLInputElement;
+    const emailInput = container.querySelector("#signupEmail") as HTMLInputElement;
+
+    // 1. Typing a reserved name ("Sakshi") immediately triggers validation alert
+    fireEvent.change(firstNameInput, { target: { value: "Sakshi" } });
+    expect(screen.getByTestId("signup-validation-alert")).toBeTruthy();
+
+    // 2. Typing an existing member's name ("Ananya Sharma") triggers duplicate name alert
+    fireEvent.change(firstNameInput, { target: { value: "Ananya" } });
+    fireEvent.change(lastNameInput, { target: { value: "Sharma" } });
+    expect(screen.getByTestId("signup-validation-alert").textContent).toContain(
+      "Anyone with the same name cannot register a duplicate account",
+    );
+
+    // 3. Typing an existing email with a new name triggers duplicate email alert
+    fireEvent.change(firstNameInput, { target: { value: "Unique" } });
+    fireEvent.change(lastNameInput, { target: { value: "Pilot" } });
+    fireEvent.change(emailInput, { target: { value: "ananya@flysilverarrows.com" } });
+    expect(screen.getByTestId("signup-validation-alert").textContent).toContain(
+      "Anyone with the same name cannot have the same email ID",
     );
   });
 

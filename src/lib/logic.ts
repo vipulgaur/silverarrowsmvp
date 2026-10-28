@@ -700,12 +700,18 @@ export function restoreUser(data: AppData, userId: string, admin: User): AppData
   };
 }
 
+export const SOLE_ADMIN_EMAIL = "admin@flysilverarrows.com";
 export const PENDING_APPROVAL_STATUS_REASON = "PENDING_ADMIN_APPROVAL";
+export const DECLINED_APPROVAL_STATUS_REASON = "DECLINED_BY_ADMIN";
 
 export function isUserPendingApproval(
-  u?: Pick<User, "statusReason" | "status"> | null,
+  u?: Pick<User, "statusReason" | "status" | "email" | "role"> | null,
 ): boolean {
-  return Boolean(u && u.status !== "deleted" && u.statusReason === PENDING_APPROVAL_STATUS_REASON);
+  if (!u || u.status === "deleted") return false;
+  if (u.role === "admin") return false;
+  if (u.email && u.email.trim().toLowerCase() === SOLE_ADMIN_EMAIL) return false;
+  if (u.statusReason === DECLINED_APPROVAL_STATUS_REASON) return false;
+  return u.statusReason === PENDING_APPROVAL_STATUS_REASON;
 }
 
 export function approveUserLogin(data: AppData, userId: string, admin: User): AppData | string {
@@ -725,6 +731,145 @@ export function approveUserLogin(data: AppData, userId: string, admin: User): Ap
     ),
   };
 }
+
+export function declineUserLogin(
+  data: AppData,
+  userId: string,
+  admin: User,
+  now = new Date(),
+): AppData | string {
+  if (admin.role !== "admin") return "Only administrators can decline user login requests.";
+  if (userId === admin.id || userId === "u-admin") {
+    return "Cannot decline the system administrator account.";
+  }
+  const u = data.users.find((x) => x.id === userId);
+  if (!u) return "User not found.";
+  return {
+    ...data,
+    users: data.users.map((x) =>
+      x.id === userId
+        ? {
+            ...x,
+            status: "deleted",
+            deletedBy: admin.id,
+            deletedAt: now.toISOString(),
+            statusReason: DECLINED_APPROVAL_STATUS_REASON,
+          }
+        : x,
+    ),
+    activity: data.activity.filter(
+      (a) =>
+        !(
+          a.action === "account_registration_requested" &&
+          (a.entityId === userId || a.details.toLowerCase().includes(u.email.toLowerCase()))
+        ),
+    ),
+  };
+}
+
+/**
+ * Strict account creation validation shared across public registration (/login) and admin creation (/admin/create).
+ * Enforces:
+ * 1. Single-admin policy: only admin@flysilverarrows.com is permitted as Administrator.
+ * 2. Unique Name policy: no two users can have the same name (or match an existing member's first/full name).
+ * 3. Unique Email policy: no two users can share an email ID or @flysilverarrows.com prefix.
+ * 4. Unique Phone policy: no two users can share the same phone number.
+ */
+export function validateAccountCreation(
+  candidate: {
+    name?: string;
+    firstName?: string;
+    lastName?: string;
+    email: string;
+    phone: string;
+    role?: Role;
+  },
+  existingUsers: User[],
+): string | null {
+  const first = (candidate.firstName ?? "").trim();
+  const last = (candidate.lastName ?? "").trim();
+  const fullName = (candidate.name ?? `${first} ${last}`).trim().replace(/\s+/g, " ");
+  const cleanEmail = (candidate.email ?? "").trim().toLowerCase();
+  const cleanPhone = (candidate.phone ?? "").trim();
+
+  if (!fullName || fullName.length < 2) {
+    return "Enter a valid full name (at least 2 characters).";
+  }
+  if (candidate.firstName !== undefined && (!first || first.length < 2)) {
+    return "Enter a valid first name (at least 2 characters).";
+  }
+  if (candidate.lastName !== undefined && (!last || last.length < 2)) {
+    return "Enter a valid last name (at least 2 characters).";
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail) || cleanEmail.length > 255) {
+    return "Enter a valid email address.";
+  }
+  const normPhone = cleanPhone.replace(/[\s\-().+]/g, "");
+  if (normPhone.length < 7 || !/^\d+$/.test(normPhone)) {
+    return "Enter a valid phone number (at least 7 digits).";
+  }
+
+  // 1. Sole Admin Lock
+  if (candidate.role === "admin" || cleanEmail === SOLE_ADMIN_EMAIL) {
+    return "Administrator creation is locked. Only admin@flysilverarrows.com is authorized as the sole Administrator in the system.";
+  }
+
+  const normFull = fullName.toLowerCase();
+  const normFirst = (first || fullName.split(" ")[0] || "").toLowerCase();
+  const emailPrefix = cleanEmail.split("@")[0] ?? "";
+
+  // Reserved identities check
+  const reservedNames = new Set([
+    "admin",
+    "administrator",
+    "system administrator",
+    "demo admin",
+    "sakshi",
+    "sakshi gaur",
+  ]);
+  if (
+    reservedNames.has(normFull) ||
+    reservedNames.has(normFirst) ||
+    cleanEmail === "sakshi@flysilverarrows.com"
+  ) {
+    return `The name or email "${fullName || cleanEmail}" is a reserved system identity and cannot be registered.`;
+  }
+
+  const activeOrPending = existingUsers.filter((u) => u.status !== "deleted");
+
+  for (const u of activeOrPending) {
+    const existingEmail = u.email.trim().toLowerCase();
+    const existingName = u.name.trim().replace(/\s+/g, " ").toLowerCase();
+    const existingFirst = existingName.split(" ")[0] ?? "";
+    const existingEmailPrefix = existingEmail.split("@")[0] ?? "";
+
+    if (existingEmail === cleanEmail) {
+      return `An account with the email ID "${cleanEmail}" already exists (${u.name}). Duplicate email IDs are not permitted.`;
+    }
+
+    if (existingName === normFull || (existingFirst.length >= 3 && existingFirst === normFirst)) {
+      return `An account with the name "${u.name}" already exists (${u.email}). Anyone with the same name cannot register a duplicate account or share an email ID.`;
+    }
+
+    if (
+      cleanEmail.endsWith("@flysilverarrows.com") &&
+      existingEmail.endsWith("@flysilverarrows.com") &&
+      existingEmailPrefix === emailPrefix
+    ) {
+      return `The email ID "${cleanEmail}" conflicts with existing member ${u.name} (${u.email}).`;
+    }
+
+    if (u.phone) {
+      const existingPhone = u.phone.replace(/[\s\-().+]/g, "");
+      if (existingPhone.length >= 7 && existingPhone === normPhone) {
+        return `An account with this phone number already exists (${u.name}). Duplicate phone numbers are not permitted.`;
+      }
+    }
+  }
+
+  return null;
+}
+
 
 
 export const can = {

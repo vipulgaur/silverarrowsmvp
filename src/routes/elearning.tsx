@@ -66,7 +66,7 @@ export const Route = createFileRoute("/elearning")({
 });
 
 const QUICK_ELEARNING_USERS = [
-  { label: "Sakshi Gaur", role: "Administrator (Course Admin)", email: "sakshi@flysilverarrows.com" },
+  { label: "System Administrator", role: "Administrator (Sole Admin)", email: "admin@flysilverarrows.com" },
   { label: "Vipul Aviation", role: "Chief CFI (VPL)", email: "vipul@flysilverarrows.com" },
   { label: "Priya Nair", role: "Flight Instructor (CFI)", email: "priya@flysilverarrows.com" },
   { label: "Anujay Singh", role: "Ground Instructor", email: "anujay@flysilverarrows.com" },
@@ -94,7 +94,7 @@ function ELearningPage() {
   const [unassigningBusy, setUnassigningBusy] = useState(false);
 
   // Unified E-Learning sign-in states
-  const [loginEmail, setLoginEmail] = useState("sakshi@flysilverarrows.com");
+  const [loginEmail, setLoginEmail] = useState("admin@flysilverarrows.com");
   const [loginPassword, setLoginPassword] = useState("Vipul@1011");
   const [loginBusy, setLoginBusy] = useState(false);
 

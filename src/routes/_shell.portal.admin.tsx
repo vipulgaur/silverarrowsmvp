@@ -49,6 +49,7 @@ import {
 import {
   aircraftUnavailable,
   approveUserLogin,
+  declineUserLogin,
   expiryState,
   isUserPendingApproval,
   memberNotifications,
@@ -137,6 +138,19 @@ function AdminPortal() {
       uid,
     );
     toast.success(`Approved login access for ${u.name} — synced to database in real time!`);
+  }
+  function declineLogin(uid: string) {
+    const u = lk.user(uid);
+    if (!u) return;
+    const err = commit(declineUserLogin(data, uid, me));
+    if (err) return void toast.error(err);
+    log(
+      "user_login_declined",
+      "user",
+      `Declined login registration for ${u.name} (${u.email} · ${roleLabel[u.role]})`,
+      uid,
+    );
+    toast.success(`Declined account registration for ${u.name} — permanently archived.`);
   }
   function del(uid: string) {
     const u = lk.user(uid)!;
@@ -239,7 +253,7 @@ function AdminPortal() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => del(u.id)}
+                    onClick={() => declineLogin(u.id)}
                     className="border-destructive/40 text-destructive hover:bg-destructive/10"
                   >
                     <XCircle className="mr-1.5 h-4 w-4" />
@@ -416,14 +430,25 @@ function AdminPortal() {
                         </>
                       )}
                       {n.id.startsWith("accountapproval:") && (
-                        <Button
-                          size="sm"
-                          onClick={() => approveLogin(n.id.replace("accountapproval:", ""))}
-                          className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white px-2.5"
-                        >
-                          <CheckCircle2 className="mr-1 h-3 w-3" />
-                          Approve Login Access
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => approveLogin(n.id.replace("accountapproval:", ""))}
+                            className="h-7 text-[11px] bg-emerald-600 hover:bg-emerald-700 text-white px-2.5"
+                          >
+                            <CheckCircle2 className="mr-1 h-3 w-3" />
+                            Approve Login Access
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => declineLogin(n.id.replace("accountapproval:", ""))}
+                            className="h-7 text-[11px] border-destructive/40 text-destructive hover:bg-destructive/10 px-2.5"
+                          >
+                            <XCircle className="mr-1 h-3 w-3" />
+                            Decline
+                          </Button>
+                        </>
                       )}
                       {n.to && !booking && !n.id.startsWith("accountapproval:") && (
                         <Button asChild size="sm" variant="outline" className="h-7 text-[11px] px-2.5">

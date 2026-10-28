@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { DEMO_SESSION_KEY, readDemoData, writeDemoData } from "@/lib/demo-storage";
-import { uid } from "@/lib/logic";
+import { SOLE_ADMIN_EMAIL, uid, validateAccountCreation } from "@/lib/logic";
 import type { Role, User } from "@/lib/types";
 
 const SUPABASE_URL =
@@ -67,14 +67,8 @@ function notifyDemoListeners(event: string, session: DemoSession | null) {
 }
 
 function inferRoleFromEmail(email: string): Role {
-  const lower = email.toLowerCase();
-  if (
-    lower === "sakshi@flysilverarrows.com" ||
-    lower === "admin@flysilverarrows.com" ||
-    lower === "admin@silverarrows.aero" ||
-    lower === "sakshi@silverarrows.aero"
-  )
-    return "admin";
+  const lower = email.trim().toLowerCase();
+  if (lower === SOLE_ADMIN_EMAIL) return "admin";
   if (
     lower === "vipul@flysilverarrows.com" ||
     lower === "vipul@silverarrows.aero" ||
@@ -107,19 +101,24 @@ function findOrCreateLocalUser(
   );
   if (existing) return existing;
 
-  const role = preferredRole ?? inferRoleFromEmail(clean);
+  const rawRole = preferredRole ?? inferRoleFromEmail(clean);
+  const role: Role =
+    clean === SOLE_ADMIN_EMAIL ? "admin" : rawRole === "admin" ? "student" : rawRole;
   const localPart = clean.split("@")[0] || "pilot";
   const displayName =
-    fullName?.trim() || localPart.replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    clean === SOLE_ADMIN_EMAIL
+      ? "System Administrator"
+      : fullName?.trim() ||
+        localPart.replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const newUser: User = {
-    id: `u-${uid()}`,
+    id: clean === SOLE_ADMIN_EMAIL ? "u-admin" : `u-${uid()}`,
     name: displayName,
     email: clean,
     role,
     status: "active",
     ...(phone ? { phone } : {}),
     ...(statusReason ? { statusReason } : {}),
-    callsign: displayName.slice(0, 3).toUpperCase(),
+    callsign: clean === SOLE_ADMIN_EMAIL ? "ADM" : displayName.slice(0, 3).toUpperCase(),
     programId: role === "student" ? "p-ppl" : undefined,
     instructorId: role === "student" ? "u-vpl" : undefined,
     stage:
@@ -169,8 +168,8 @@ export async function provisionAuthUserWithoutSessionSwitch(
 let serviceClientPromise: Promise<ReturnType<typeof createClient> | null> | null = null;
 
 /**
- * Returns a background non-persisting Supabase client authenticated as the tenant administrator
- * so newly registered or unlinked users can still read/write academy registration records in Cloud.
+ * Returns a background non-persisting Supabase client authenticated as the sole tenant administrator
+ * (admin@flysilverarrows.com) so newly registered or unlinked users can read/write academy registration records.
  */
 export async function getAuthenticatedServiceClient(): Promise<ReturnType<typeof createClient> | null> {
   if (isTestEnv) return null;
@@ -185,7 +184,7 @@ export async function getAuthenticatedServiceClient(): Promise<ReturnType<typeof
           },
         });
         const { error } = await client.auth.signInWithPassword({
-          email: "sakshi@flysilverarrows.com",
+          email: SOLE_ADMIN_EMAIL,
           password: "Vipul@1011",
         });
         if (error) {
@@ -203,7 +202,7 @@ export async function getAuthenticatedServiceClient(): Promise<ReturnType<typeof
 }
 
 const CANONICAL_TESTING_EMAILS = new Set([
-  "sakshi@flysilverarrows.com",
+  SOLE_ADMIN_EMAIL,
   "vipul@flysilverarrows.com",
   "priya@flysilverarrows.com",
   "anujay@flysilverarrows.com",
@@ -236,6 +235,23 @@ const hybridAuth = {
       };
     }
 
+    // Check if local record is explicitly declined by admin
+    const localSnapshot = readDemoData().data;
+    const localMatch = localSnapshot.users.find((u) => u.email.toLowerCase() === clean);
+    if (
+      clean !== SOLE_ADMIN_EMAIL &&
+      localMatch &&
+      (localMatch.statusReason === "DECLINED_BY_ADMIN" || localMatch.status === "deleted")
+    ) {
+      return {
+        data: { user: null, session: null },
+        error: {
+          message:
+            "Your account access has been declined or deactivated by the Administrator.",
+        },
+      };
+    }
+
     // Clear any stale demo session first
     setStoredDemoSession(null);
 
@@ -257,9 +273,11 @@ const hybridAuth = {
           }
         }
 
-        // If account does not exist in Supabase auth yet, auto-provision it with the supplied password
+        // Only auto-provision Supabase auth for canonical testing roster or existing active members
         if (
           res.error &&
+          (CANONICAL_TESTING_EMAILS.has(clean) ||
+            (localMatch && localMatch.status === "active")) &&
           (res.error.message?.toLowerCase().includes("invalid login credentials") ||
             res.error.message?.toLowerCase().includes("user not found"))
         ) {
@@ -276,30 +294,32 @@ const hybridAuth = {
         }
 
         if (!res.error && res.data.user) {
-          // Check if member already exists in tenant_members before calling register_member
           const svc = (await getAuthenticatedServiceClient()) ?? realSupabase;
           const { data: existingMember } = await (svc as any)
             .from("tenant_members")
-            .select("id, email, status_reason")
+            .select("id, email, status, status_reason, archived_at")
             .ilike("email", clean)
-            .is("archived_at", null)
             .limit(1)
             .maybeSingle();
 
-          if (!existingMember) {
-            const role = inferRoleFromEmail(clean);
-            const namePart = clean.split("@")[0] || "Pilot";
-            try {
-              await realSupabase.rpc("register_member", {
-                p_first: namePart,
-                p_last: "Member",
-                p_role: role,
-                p_master: role === "admin" ? "Vipul@1011" : null,
-              });
-            } catch {
-              /* ignore rpc errors if already registered */
-            }
-          } else if (res.data.user.id) {
+          if (
+            clean !== SOLE_ADMIN_EMAIL &&
+            existingMember &&
+            (existingMember.status_reason === "DECLINED_BY_ADMIN" ||
+              existingMember.status === "deleted" ||
+              existingMember.archived_at !== null)
+          ) {
+            await realSupabase.auth.signOut();
+            return {
+              data: { user: null, session: null },
+              error: {
+                message:
+                  "Your account registration or access was declined by the Administrator.",
+              },
+            };
+          }
+
+          if (existingMember && res.data.user.id) {
             // Link profile_id if not linked yet
             await (svc as any)
               .from("tenant_members")
@@ -359,12 +379,11 @@ const hybridAuth = {
       }
     }
 
-    const localUser = findOrCreateLocalUser(clean);
     const demoSession: DemoSession = {
       user: {
-        id: localUser.id,
-        email: localUser.email,
-        user_metadata: { role: localUser.role },
+        id: `u-${uid().slice(0, 6)}`,
+        email: clean,
+        user_metadata: { role: "student" },
       },
       isDemoFallback: true,
     };
@@ -471,10 +490,9 @@ export const supabase = new Proxy(realSupabase, {
           const phone = typeof args.p_phone === "string" ? args.p_phone.trim() : undefined;
           const cleanEmailArg =
             typeof args.p_email === "string" ? args.p_email.trim().toLowerCase() : undefined;
-          const role = (args.p_role ?? "student") as Role;
-          const fullName = `${first} ${last}`.trim() || "Pilot Member";
+          const requestedRole = (args.p_role ?? "student") as Role;
+          const fullName = `${first} ${last}`.trim();
           const callsign = `${first.slice(0, 1)}${last.slice(0, 2)}`.toUpperCase() || "PLT";
-          const statusReason = role === "admin" ? undefined : "PENDING_ADMIN_APPROVAL";
 
           const demo = getStoredDemoSession();
           let authUserEmail = cleanEmailArg ?? demo?.user.email;
@@ -492,41 +510,74 @@ export const supabase = new Proxy(realSupabase, {
             }
           }
 
-          const email = (authUserEmail ?? "pilot@flysilverarrows.com").trim().toLowerCase();
+          const email = (authUserEmail ?? "").trim().toLowerCase();
+
+          // Validate against local users first (rejects duplicate name, duplicate email, duplicate phone, or unauthorized admin)
+          const { data: localData } = readDemoData();
+          const validationError = validateAccountCreation(
+            {
+              firstName: first,
+              lastName: last,
+              name: fullName,
+              email,
+              phone: phone ?? "",
+              role: requestedRole,
+            },
+            localData.users,
+          );
+          if (validationError) {
+            return { data: null, error: { message: validationError } };
+          }
+
+          const role: Role =
+            email === SOLE_ADMIN_EMAIL
+              ? "admin"
+              : requestedRole === "admin"
+                ? "student"
+                : requestedRole;
+          const statusReason = role === "admin" ? undefined : "PENDING_ADMIN_APPROVAL";
           let cloudMemberId: string | null = null;
 
           if (!isTestEnv) {
             try {
-              // 1. Try native RPC without unsupported p_phone/p_email parameters
-              const rpcArgs: Record<string, unknown> = {
-                p_first: first,
-                p_last: last,
-                p_role: role,
-                p_master: args.p_master ?? null,
-              };
-              const rpcRes = await target.rpc("register_member", rpcArgs);
-              if (!rpcRes.error && rpcRes.data) {
-                cloudMemberId = String(rpcRes.data);
-              }
-            } catch {
-              /* fallback to service client insert below */
-            }
-
-            try {
-              // 2. Always guarantee member row, role row, phone, and PENDING_ADMIN_APPROVAL are persisted in Cloud
               const svc = (await getAuthenticatedServiceClient()) ?? target;
               const dbClient = svc as any;
-              const { data: existingRow } = await dbClient
-                .from("tenant_members")
-                .select("id")
-                .eq("tenant_id", DEFAULT_TENANT_ID)
-                .ilike("email", email)
-                .is("archived_at", null)
-                .limit(1)
-                .maybeSingle();
 
-              const memberId =
-                existingRow?.id ?? cloudMemberId ?? `u-${uid().slice(0, 6)}`;
+              // Check remote active members to prevent ANY duplicate email or duplicate name collision
+              const { data: remoteActive } = await dbClient
+                .from("tenant_members")
+                .select("id, name, email, phone, status")
+                .eq("tenant_id", DEFAULT_TENANT_ID)
+                .is("archived_at", null);
+
+              const activeRows = ((remoteActive ?? []) as Record<string, unknown>[]).filter(
+                (r) => r.status !== "deleted",
+              );
+              const remoteUsersForCheck: User[] = activeRows.map((r) => ({
+                id: String(r.id),
+                name: String(r.name ?? ""),
+                email: String(r.email ?? ""),
+                phone: r.phone ? String(r.phone) : undefined,
+                role: "student",
+                status: "active",
+              }));
+
+              const remoteValidationErr = validateAccountCreation(
+                {
+                  firstName: first,
+                  lastName: last,
+                  name: fullName,
+                  email,
+                  phone: phone ?? "",
+                  role,
+                },
+                remoteUsersForCheck,
+              );
+              if (remoteValidationErr) {
+                return { data: null, error: { message: remoteValidationErr } };
+              }
+
+              const memberId = `u-${uid().slice(0, 6)}`;
               cloudMemberId = memberId;
 
               const memberPayload: Record<string, unknown> = {
@@ -594,16 +645,10 @@ export const supabase = new Proxy(realSupabase, {
             }
           }
 
-          // 3. Always update local store as well so local state and unit tests have the record immediately
+          // 3. Always create a fresh local user record (never overwrite an existing active member)
           const { data } = readDemoData();
-          const existing = data.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-          const finalId = cloudMemberId ?? existing?.id ?? demo?.user.id ?? `u-${uid().slice(0, 6)}`;
+          const finalId = cloudMemberId ?? `u-${uid().slice(0, 6)}`;
           const updatedUser: User = {
-            ...(existing ?? {
-              id: finalId,
-              email,
-              status: "active" as const,
-            }),
             id: finalId,
             name: fullName,
             email,
@@ -615,9 +660,7 @@ export const supabase = new Proxy(realSupabase, {
             programId: role === "student" ? "p-ppl" : undefined,
             instructorId: role === "student" ? "u-vpl" : undefined,
           };
-          const nextUsers = existing
-            ? data.users.map((u) => (u.id === existing.id ? updatedUser : u))
-            : [...data.users, updatedUser];
+          const nextUsers = [...data.users.filter((u) => u.id !== finalId), updatedUser];
           const regActivity =
             statusReason === "PENDING_ADMIN_APPROVAL"
               ? [

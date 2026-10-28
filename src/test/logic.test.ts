@@ -5,19 +5,23 @@ import {
   bookingProblem,
   can,
   canAccess,
+  declineUserLogin,
   expiryState,
   homeFor,
   hoursBreakdown,
+  isUserPendingApproval,
   maintenanceState,
   memberNotifications,
   prepareBooking,
   reviewBooking,
   reviewProfileRequest,
+  SOLE_ADMIN_EMAIL,
   studentDocumentsFor,
   studentProgress,
   submitProfileRequest,
   submitStudentFlightLog,
   theoryProgress,
+  validateAccountCreation,
   verifyFlightLog,
   visibleTo,
 } from "@/lib/logic";
@@ -263,5 +267,107 @@ describe("Core Business Rules & Logic (src/lib/logic.ts)", () => {
     expect(["ok", "soon", "overdue"]).toContain(maintenanceState(maint, ac));
     expect(aircraftUnavailable({ ...ac, grounded: true }, data.maintenance)).toBe(true);
     expect(expiryState("2020-01-01").state).toBe("expired");
+  });
+
+  it("enforces sole administrator policy, duplicate name/email rejection, and permanent account decline", () => {
+    const data = seedData();
+    const admins = data.users.filter((u) => u.role === "admin");
+    expect(admins.length).toBe(1);
+    expect(admins[0].email).toBe(SOLE_ADMIN_EMAIL);
+
+    // Reject reserved name ("Sakshi")
+    expect(
+      validateAccountCreation(
+        {
+          firstName: "Sakshi",
+          lastName: "Test",
+          email: "sakshi.test@gmail.com",
+          phone: "+91 98199 11223",
+          role: "student",
+        },
+        data.users,
+      ),
+    ).toBeTruthy();
+
+    // Reject duplicate name ("Ananya Sharma")
+    expect(
+      validateAccountCreation(
+        {
+          firstName: "Ananya",
+          lastName: "Sharma",
+          email: "ananya.new@gmail.com",
+          phone: "+91 98199 44556",
+          role: "student",
+        },
+        data.users,
+      ),
+    ).toContain("already exists");
+
+    // Reject duplicate email
+    expect(
+      validateAccountCreation(
+        {
+          firstName: "Vikram",
+          lastName: "Rao",
+          email: "ananya@flysilverarrows.com",
+          phone: "+91 98199 77889",
+          role: "student",
+        },
+        data.users,
+      ),
+    ).toContain("already exists");
+
+    // Reject creating a second admin
+    expect(
+      validateAccountCreation(
+        {
+          firstName: "Vikram",
+          lastName: "Rao",
+          email: "vikram@flysilverarrows.com",
+          phone: "+91 98199 77889",
+          role: "admin",
+        },
+        data.users,
+      ),
+    ).toContain("sole Administrator");
+
+    // Verify declining a pending user permanently archives them and removes pending approval status
+    const pendingUser = {
+      id: "u-pend-1",
+      name: "Vikram Rao",
+      email: "vikram@flysilverarrows.com",
+      phone: "+91 98199 77889",
+      role: "student" as const,
+      status: "active" as const,
+      statusReason: "PENDING_ADMIN_APPROVAL",
+    };
+    const withPending = {
+      ...data,
+      users: [...data.users, pendingUser],
+      activity: [
+        {
+          id: "act-reg-u-pend-1",
+          at: new Date().toISOString(),
+          actorId: "u-pend-1",
+          actorName: "Vikram Rao",
+          actorRole: "student" as const,
+          action: "account_registration_requested",
+          entityType: "user" as const,
+          entityId: "u-pend-1",
+          details: "Registered",
+        },
+        ...data.activity,
+      ],
+    };
+    expect(isUserPendingApproval(pendingUser)).toBe(true);
+    const declined = declineUserLogin(withPending, "u-pend-1", admins[0]);
+    expect(typeof declined).not.toBe("string");
+    if (typeof declined !== "string") {
+      const target = declined.users.find((u) => u.id === "u-pend-1")!;
+      expect(target.status).toBe("deleted");
+      expect(target.statusReason).toBe("DECLINED_BY_ADMIN");
+      expect(isUserPendingApproval(target)).toBe(false);
+      expect(declined.activity.some((a) => a.id === "act-reg-u-pend-1")).toBe(false);
+    }
   });
 });

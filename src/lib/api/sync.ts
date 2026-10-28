@@ -74,18 +74,23 @@ export async function loadAcademy(userId: string, fallbackEmail?: string): Promi
   if (isUuid) {
     const { data, error } = await activeDb
       .from("tenant_members")
-      .select("tenant_id, id, email, status, archived_at")
+      .select("tenant_id, id, email, status, status_reason, archived_at")
       .eq("profile_id", userId)
       .limit(1)
       .maybeSingle();
     if (!error && data) {
-      membership = data;
-      // Auto-recover if the authenticated user's linked membership row was accidentally archived
-      if (data.status === "deleted" || data.archived_at !== null) {
+      const rowEmail = String(data.email ?? "").trim().toLowerCase();
+      if (rowEmail === "admin@flysilverarrows.com" && (data.status === "deleted" || data.archived_at !== null)) {
         await activeDb
           .from("tenant_members")
-          .update({ status: "active", archived_at: null, deleted_at: null, deleted_by: null })
+          .update({ status: "active", status_reason: null, archived_at: null, deleted_at: null, deleted_by: null })
           .eq("id", data.id);
+        data.status = "active";
+        data.status_reason = null;
+        data.archived_at = null;
+      }
+      if (data.status_reason !== "DECLINED_BY_ADMIN" && data.archived_at === null) {
+        membership = data;
       }
     }
   }
@@ -94,37 +99,24 @@ export async function loadAcademy(userId: string, fallbackEmail?: string): Promi
   if (!membership && userEmail) {
     const { data: byEmail } = await activeDb
       .from("tenant_members")
-      .select("tenant_id, id, email, status, archived_at")
+      .select("tenant_id, id, email, status, status_reason, archived_at")
       .ilike("email", userEmail)
       .limit(1)
       .maybeSingle();
 
     if (byEmail) {
-      membership = byEmail;
-      if (byEmail.status === "deleted" || byEmail.archived_at !== null) {
+      const rowEmail = String(byEmail.email ?? "").trim().toLowerCase();
+      if (rowEmail === "admin@flysilverarrows.com" && (byEmail.status === "deleted" || byEmail.archived_at !== null)) {
         await activeDb
           .from("tenant_members")
-          .update({ status: "active", archived_at: null, deleted_at: null, deleted_by: null })
+          .update({ status: "active", status_reason: null, archived_at: null, deleted_at: null, deleted_by: null })
           .eq("id", byEmail.id);
+        byEmail.status = "active";
+        byEmail.status_reason = null;
+        byEmail.archived_at = null;
       }
-    } else {
-      try {
-        const namePart = userEmail.split("@")[0] || "Pilot";
-        const res = await supabase.rpc("register_member", {
-          p_first: namePart,
-          p_last: "Member",
-          p_email: userEmail,
-          p_role: "student",
-        });
-        if (res?.data) {
-          membership = {
-            tenant_id: "5a0e0000-0000-4000-8000-000000000001",
-            id: res.data as string,
-            email: userEmail,
-          };
-        }
-      } catch {
-        /* ignore rpc fallback */
+      if (byEmail.status_reason !== "DECLINED_BY_ADMIN" && byEmail.archived_at === null) {
+        membership = byEmail;
       }
     }
   }
@@ -166,12 +158,18 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
       .update({ archived_at: new Date().toISOString() })
       .eq("tenant_id", tenantId)
       .in("id", ids);
-    if (error) throw new Error(friendly(error));
+    if (error && t !== "activity_feed") throw new Error(friendly(error));
   }
   for (const t of TABLE_ORDER) {
     const rows = c.upserts[t];
     if (!rows?.length) continue;
-    const payload: Record<string, unknown>[] = rows.map((r) => ({ ...r, archived_at: null }));
+    const payload: Record<string, unknown>[] = rows.map((r) => ({
+      ...r,
+      archived_at:
+        t === "tenant_members" && r["status_reason"] === "DECLINED_BY_ADMIN"
+          ? (r["deleted_at"] ?? new Date().toISOString())
+          : null,
+    }));
     if (t === "bookings") {
       for (const row of payload) {
         const { requested_at: _requestedAt, requested_by: _requestedBy, ...updateRow } = row;

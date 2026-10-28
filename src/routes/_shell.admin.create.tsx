@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import {
@@ -10,6 +10,7 @@ import {
   GraduationCap,
   Plane,
   School,
+  ShieldAlert,
   UserPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Chip, Field, NativeSelect, PageHeader, Section } from "@/components/app-ui";
 import { useMe } from "@/lib/store";
 import { provisionAuthUserWithoutSessionSwitch } from "@/integrations/supabase/client";
-import { activeUsers, GENDERS, uid } from "@/lib/logic";
+import { activeUsers, GENDERS, SOLE_ADMIN_EMAIL, uid, validateAccountCreation } from "@/lib/logic";
 import { roleLabel, type Lesson, type Role, type User } from "@/lib/types";
 
 export const Route = createFileRoute("/_shell/admin/create")({
@@ -115,27 +116,78 @@ function AdminCreatePage() {
   const [subjectCode, setSubjectCode] = useState("");
   const [subjectName, setSubjectName] = useState("");
 
+  const liveMemberValidationError = useMemo(() => {
+    const n = name.trim();
+    const e = email.trim().toLowerCase();
+    const p = phone.trim();
+    if (!n && !e && !p) return null;
+
+    const activeMembers = data.users.filter((u) => u.status !== "deleted");
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+    if (n) {
+      const nNorm = norm(n);
+      const firstToken = nNorm.split(" ")[0] ?? "";
+      if (firstToken === "sakshi" || nNorm === "system administrator" || firstToken === "admin") {
+        return `Name "${n}" is reserved by system administration and cannot be registered.`;
+      }
+      const nameMatch = activeMembers.find((u) => {
+        const uNorm = norm(u.name);
+        const uFirst = uNorm.split(" ")[0] ?? "";
+        return (
+          uNorm === nNorm ||
+          (!nNorm.includes(" ") && uFirst === nNorm && nNorm.length >= 3)
+        );
+      });
+      if (nameMatch) {
+        return `An account for "${nameMatch.name}" (${nameMatch.email}) already exists. Anyone with the same name cannot register a duplicate account or share an email ID.`;
+      }
+    }
+
+    if (e) {
+      if (e === SOLE_ADMIN_EMAIL || e === "sakshi@flysilverarrows.com") {
+        return `The email ID "${e}" is reserved for the sole System Administrator.`;
+      }
+      const emailMatch = activeMembers.find((u) => u.email.trim().toLowerCase() === e);
+      if (emailMatch) {
+        return `A member with email ID "${e}" already exists (${emailMatch.name}). Anyone with the same name cannot have the same email ID.`;
+      }
+    }
+
+    if (p) {
+      const normPhone = p.replace(/[\s\-().]/g, "");
+      if (normPhone.length >= 7) {
+        const phoneMatch = activeMembers.find(
+          (u) => u.phone && u.phone.replace(/[\s\-().]/g, "") === normPhone,
+        );
+        if (phoneMatch) {
+          return `A member with phone number "${p}" already exists (${phoneMatch.name}).`;
+        }
+      }
+    }
+
+    if (n && e && p) {
+      return validateAccountCreation({ name: n, email: e, phone: p, role }, data.users);
+    }
+
+    return null;
+  }, [name, email, phone, role, data.users]);
+
   function createUser(e: FormEvent) {
     e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
     const cleanPhone = phone.trim();
-    if (!name.trim() || !cleanEmail || !cleanPhone) {
-      toast.error("Full name, email address, and phone number are all required.");
-      return;
-    }
-    if (data.users.some((u) => u.email.toLowerCase() === cleanEmail)) {
-      toast.error("A member with this email address already exists.");
-      return;
-    }
-    const normalizedPhone = cleanPhone.replace(/[\s\-().]/g, "");
-    if (
-      data.users.some(
-        (u) =>
-          u.phone &&
-          u.phone.replace(/[\s\-().]/g, "") === normalizedPhone,
-      )
-    ) {
-      toast.error("A member with this phone number already exists.");
+    const validationErr = validateAccountCreation(
+      {
+        name: name.trim(),
+        email: cleanEmail,
+        phone: cleanPhone,
+        role,
+      },
+      data.users,
+    );
+    if (validationErr) {
+      toast.error(validationErr);
       return;
     }
 
@@ -441,9 +493,22 @@ function AdminCreatePage() {
         <TabsContent value="members">
           <Section
             title="Register academy member (Full registration form)"
-            description="Create a student pilot, flight instructor (CFI), ground instructor, or administrator with full personal, licensing, medical, address, and emergency contact records."
+            description="Create a student pilot, flight instructor (CFI), or ground instructor with full personal, licensing, medical, address, and emergency contact records. Note: admin@flysilverarrows.com is the sole Administrator account."
           >
             <form onSubmit={createUser} className="space-y-5">
+              {liveMemberValidationError && (
+                <div
+                  data-testid="admin-create-validation-alert"
+                  role="alert"
+                  className="flex items-start gap-2.5 rounded-xl border border-destructive/50 bg-destructive/10 p-3.5 text-xs text-destructive"
+                >
+                  <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold">Duplicate or Reserved Account Blocked</div>
+                    <div className="mt-0.5 text-[11px]">{liveMemberValidationError}</div>
+                  </div>
+                </div>
+              )}
               <div>
                 <h3 className="mb-2.5 text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   1. Identity &amp; Role Assignment
@@ -468,11 +533,13 @@ function AdminCreatePage() {
                   </Field>
                   <Field label="Role *">
                     <NativeSelect value={role} onChange={(e) => setRole(e.target.value as Role)}>
-                      {(Object.keys(roleLabel) as Role[]).map((r) => (
-                        <option key={r} value={r}>
-                          {roleLabel[r]}
-                        </option>
-                      ))}
+                      {(Object.keys(roleLabel) as Role[])
+                        .filter((r) => r !== "admin")
+                        .map((r) => (
+                          <option key={r} value={r}>
+                            {roleLabel[r]}
+                          </option>
+                        ))}
                     </NativeSelect>
                   </Field>
                   <Field label="Call sign">

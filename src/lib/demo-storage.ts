@@ -4,23 +4,53 @@ import type { AppData, User } from "./types";
 export const DEMO_STORAGE_KEY = "silverarrows-demo-data-v1";
 export const DEMO_SESSION_KEY = "silverarrows-demo-me-v1";
 
+const SOLE_ADMIN_EMAIL = "admin@flysilverarrows.com";
+
+function sanitizeUserRoleAndStatus(u: User): User {
+  const emailLower = (u.email || "").trim().toLowerCase();
+  const isSoleAdmin = emailLower === SOLE_ADMIN_EMAIL || (u.id === "u-admin" && !emailLower);
+  if (isSoleAdmin) {
+    return {
+      ...u,
+      id: "u-admin",
+      email: SOLE_ADMIN_EMAIL,
+      role: "admin",
+      status: "active",
+      statusReason: undefined,
+      deletedAt: undefined,
+      deletedBy: undefined,
+    };
+  }
+  const safeRole = u.role === "admin" ? "student" : u.role;
+  const isDeclined = u.statusReason === "DECLINED_BY_ADMIN" || u.status === "deleted";
+  return {
+    ...u,
+    role: safeRole,
+    status: isDeclined ? "deleted" : u.status,
+  };
+}
+
 function mergeUserWithSeed(u: User, seedUser?: User): User {
-  if (!seedUser) return u;
+  if (!seedUser) return sanitizeUserRoleAndStatus(u);
   const definedEntries = Object.entries(u).filter(
     ([, val]) => val !== undefined && val !== null && val !== "",
   );
-  const merged = {
+  const merged: User = {
     ...seedUser,
     ...(Object.fromEntries(definedEntries) as Partial<User>),
     id: seedUser.id,
-    role: u.role || seedUser.role,
-    status: u.status,
+    name: seedUser.id === "u-admin" ? seedUser.name : u.name || seedUser.name,
+    role: seedUser.role,
+    status: seedUser.id === "u-admin" ? "active" : u.status,
   };
-  // Enforce canonical @flysilverarrows.com email for seed users
+  // Canonical seed accounts are already approved; never mark a canonical seed member as PENDING_ADMIN_APPROVAL
+  if (merged.statusReason === "PENDING_ADMIN_APPROVAL") {
+    delete merged.statusReason;
+  }
   if (seedUser.email.endsWith("@flysilverarrows.com")) {
     merged.email = seedUser.email;
   }
-  return merged;
+  return sanitizeUserRoleAndStatus(merged);
 }
 
 export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): AppData {
@@ -32,14 +62,46 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
     (localSnapshot?.users ?? []).map((u) => [u.email.toLowerCase(), u]),
   );
 
-  const mappedUsers = data.users.map((u) => {
+  const filteredInputUsers = data.users.filter((u) => {
     const emailLower = (u.email || "").trim().toLowerCase();
-    const seedUser = seedById.get(u.id) ?? seedByEmail.get(emailLower);
+    // Filter out legacy removed admin accounts or placeholder rows
+    if (emailLower === "sakshi@flysilverarrows.com" || emailLower === "sakshi@silverarrows.aero") {
+      return false;
+    }
+    return true;
+  });
+
+  const mappedUsers = filteredInputUsers.map((u) => {
+    const emailLower = (u.email || "").trim().toLowerCase();
+    const matchedSeedById = seedById.get(u.id);
+    const seedUser =
+      seedByEmail.get(emailLower) ??
+      (matchedSeedById && matchedSeedById.email.toLowerCase() === emailLower
+        ? matchedSeedById
+        : undefined);
     const localUser = localById.get(u.id) ?? localByEmail.get(emailLower);
     const withSeed = mergeUserWithSeed(u, seedUser);
     if (!localUser) return withSeed;
-    return {
+
+    // If the user was explicitly declined or soft-deleted in the local session, preserve that deletion
+    const wasDeclinedLocally =
+      withSeed.id !== "u-admin" &&
+      (localUser.status === "deleted" || localUser.statusReason === "DECLINED_BY_ADMIN");
+    const wasApprovedLocally =
+      localUser.status === "active" &&
+      !localUser.statusReason &&
+      withSeed.statusReason === "PENDING_ADMIN_APPROVAL";
+
+    return sanitizeUserRoleAndStatus({
       ...withSeed,
+      status: wasDeclinedLocally ? "deleted" : withSeed.status,
+      statusReason: wasDeclinedLocally
+        ? localUser.statusReason || "DECLINED_BY_ADMIN"
+        : wasApprovedLocally
+          ? undefined
+          : withSeed.statusReason,
+      deletedBy: wasDeclinedLocally ? localUser.deletedBy ?? withSeed.deletedBy : withSeed.deletedBy,
+      deletedAt: wasDeclinedLocally ? localUser.deletedAt ?? withSeed.deletedAt : withSeed.deletedAt,
       computerNumber: u.computerNumber ?? localUser.computerNumber ?? withSeed.computerNumber,
       egcaId: u.egcaId ?? localUser.egcaId ?? withSeed.egcaId,
       fileNumber: u.fileNumber ?? localUser.fileNumber ?? withSeed.fileNumber,
@@ -61,7 +123,7 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
         u.examTechnicalSpecific ??
         localUser.examTechnicalSpecific ??
         withSeed.examTechnicalSpecific,
-    };
+    });
   });
 
   // Deduplicate users by canonical ID and email
@@ -72,13 +134,16 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
     if (!existing) {
       dedupedByEmail.set(key, u);
     } else {
-      const active = existing.status === "active" ? existing : u.status === "active" ? u : existing;
-      dedupedByEmail.set(key, {
-        ...existing,
-        ...u,
-        id: existing.id.startsWith("u-") ? existing.id : u.id,
-        status: active.status,
-      });
+      const isDeleted = existing.status === "deleted" || u.status === "deleted";
+      dedupedByEmail.set(
+        key,
+        sanitizeUserRoleAndStatus({
+          ...existing,
+          ...u,
+          id: existing.id.startsWith("u-") ? existing.id : u.id,
+          status: key === SOLE_ADMIN_EMAIL ? "active" : isDeleted ? "deleted" : "active",
+        }),
+      );
     }
   }
   const users = Array.from(dedupedByEmail.values());
@@ -89,7 +154,7 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
   const missingSeedUsers = fallback.users.filter(
     (fu) => !existingUserIds.has(fu.id) && !existingEmails.has(fu.email.toLowerCase()),
   );
-  const completeUsers = [...users, ...missingSeedUsers];
+  const completeUsers = [...users, ...missingSeedUsers].map(sanitizeUserRoleAndStatus);
 
   // Preserve any pending local flights or documents not yet present in remote tables
   const remoteFlightIds = new Set(data.flights.map((f) => f.id));
@@ -140,11 +205,13 @@ export function restoreDemoData(raw: string | null | undefined): AppData {
       const canonicalEmails = new Set(fallback.users.map((u) => u.email.toLowerCase()));
       const extraUsers = parsed.users
         .filter((u) => !canonicalIds.has(u.id) && !canonicalEmails.has(u.email.toLowerCase()))
-        .map((u) => ({
-          ...u,
-          programId: u.programId === "prog-ppl" ? "p-ppl" : u.programId,
-          instructorId: u.instructorId === "u-priya" ? "u-prn" : u.instructorId,
-        }));
+        .map((u) =>
+          sanitizeUserRoleAndStatus({
+            ...u,
+            programId: u.programId === "prog-ppl" ? "p-ppl" : u.programId,
+            instructorId: u.instructorId === "u-priya" ? "u-prn" : u.instructorId,
+          }),
+        );
       return {
         ...fallback,
         users: [...fallback.users, ...extraUsers],
@@ -158,15 +225,23 @@ export function restoreDemoData(raw: string | null | undefined): AppData {
 
     const seedById = new Map(fallback.users.map((u) => [u.id, u]));
     const seedByEmail = new Map(fallback.users.map((u) => [u.email.toLowerCase(), u]));
-    const normalizedUsers = parsed.users.map((u) => {
-      const emailLower = (u.email || "").toLowerCase();
-      const localPart = emailLower.split("@")[0];
+    const validParsedUsers = parsed.users.filter((u) => {
+      const emailLower = (u.email || "").trim().toLowerCase();
+      if (
+        emailLower === "sakshi@flysilverarrows.com" ||
+        emailLower === "sakshi@silverarrows.aero" ||
+        u.id === "u-demo-admin"
+      ) {
+        return false;
+      }
+      return true;
+    });
+    const normalizedUsers = validParsedUsers.map((u) => {
+      const emailLower = (u.email || "").trim().toLowerCase();
+      const matchedById = seedById.get(u.id);
       const seedUser =
-        seedById.get(u.id) ??
         seedByEmail.get(emailLower) ??
-        fallback.users.find(
-          (s) => s.email.toLowerCase() === `${localPart}@flysilverarrows.com`,
-        );
+        (matchedById && matchedById.email.toLowerCase() === emailLower ? matchedById : undefined);
       return mergeUserWithSeed(u, seedUser);
     });
 
@@ -175,7 +250,7 @@ export function restoreDemoData(raw: string | null | undefined): AppData {
     const missingSeed = fallback.users.filter(
       (fu) => !existingIds.has(fu.id) && !existingEmails.has(fu.email.toLowerCase()),
     );
-    const completeUsers = [...normalizedUsers, ...missingSeed];
+    const completeUsers = [...normalizedUsers, ...missingSeed].map(sanitizeUserRoleAndStatus);
 
     return {
       users: completeUsers,

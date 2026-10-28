@@ -435,8 +435,8 @@ function buildSeededLoginHistory(): Record<string, LoginPrivacyRecord[]> {
     ),
     "u-admin": makeForUser(
       "u-admin",
-      "Sakshi Gaur",
-      "sakshi@flysilverarrows.com",
+      "System Administrator",
+      "admin@flysilverarrows.com",
       "admin",
       "New Delhi, Delhi, India",
       "28.5562°N, 77.1000°E",
