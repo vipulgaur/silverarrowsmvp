@@ -1,0 +1,150 @@
+{
+  "repository": "https://github.com/vipulgaur/silverarrowsmvp.git",
+  "collaborator": {
+    "id": "u-parth",
+    "name": "Parth Bhatt",
+    "email": "parth@flysilverarrows.com",
+    "branch": "parthbhatt",
+    "scope": "E-Learning Only (FlightLogger UI & Code Blocked)",
+    "allowedPaths": [
+      "src/elearning/**",
+      "src/routes/elearning.tsx",
+      "src/routes/_shell.learning.index.tsx",
+      "src/routes/_shell.learning.$chapterId.tsx",
+      "src/components/learning-reader.tsx",
+      "src/components/learning-diagram.tsx",
+      "src/components/assigned-courses-panel.tsx",
+      "src/lib/elearning-courses.ts",
+      "src/lib/learning-content.ts",
+      "src/lib/learning-state.ts",
+      "src/lib/airlaw-content.ts",
+      "src/lib/airframes-content.ts",
+      "src/lib/electrics-content.ts",
+      "src/lib/powerplant-content.ts",
+      "src/assets/learning/**",
+      "src/assets/airlaw/**",
+      "src/assets/airframes/**",
+      "src/assets/electrics/**",
+      "src/assets/powerplant/**"
+    ]
+  },
+  "lastSyncedCommit": "a4a2eda",
+  "lastSyncedAt": "2026-11-02T03:50:00.000Z",
+  "tasks": [
+    {
+      "id": "TASK-EL-01",
+      "title": "Pooley Air Manual — Verify & Enhance Interactive Hotspot Callouts (Chapters 1–5)",
+      "courseId": "pooley",
+      "courseTitle": "Air Manual — Pooley",
+      "targetChapterId": "chapter-01",
+      "targetChapterLabel": "Ch 1: Familiarisation with the Aeroplane",
+      "priority": "high",
+      "status": "in_progress",
+      "assignedBy": "Vipul (Administrator)",
+      "assignedAt": "2026-11-02T03:30:00.000Z",
+      "updatedAt": "2026-11-02T03:55:00.000Z",
+      "allowedFiles": [
+        "src/lib/learning-content.ts",
+        "src/components/learning-diagram.tsx",
+        "src/components/learning-reader.tsx"
+      ],
+      "whatToDo": [
+        "Review all interactive figure hotspots in Chapters 1 to 5 of Air Manual — Pooley.",
+        "Ensure every cockpit and airframe diagram hotspot coordinate aligns accurately with the underlying SVG/PNG asset aspect ratio.",
+        "Expand part explanations on hover/tap so cadets get clear aerodynamic and cockpit instrument descriptions.",
+        "Submit a work report here in the E-Learning Developer Panel once ready, then push to origin/parthbhatt."
+      ],
+      "whatNotToDo": [
+        "DO NOT modify or access any FlightLogger files (bookings, dispatch, logbook, fleet, invoicing, SMS, CBTA, or portals).",
+        "DO NOT alter the verbatim supplied Markdown lesson text — keep original textbook wording intact and only update authorized expanded notes or figure metadata.",
+        "DO NOT add CSS animations to diagram hotspots (part explanations must appear cleanly on hover/focus/tap per architecture rules).",
+        "DO NOT push directly to main — only push to origin/parthbhatt when instructed by Vipul."
+      ],
+      "reports": [
+        {
+          "id": "REP-EL-01",
+          "taskId": "TASK-EL-01",
+          "submittedBy": "Parth Bhatt",
+          "submittedAt": "2026-11-02T03:55:00.000Z",
+          "branch": "parthbhatt",
+          "commitHash": "a4a2eda",
+          "statusAfter": "in_progress",
+          "summary": "Initialized isolated E-Learning workspace on branch parthbhatt and audited Pooley Chapter 1–4 interactive hotspot coordinates and reader layout.",
+          "changesMade": [
+            "Verified 19-chapter Pooley Air Manual structure and interactive figure hotspot alignment in Chapter 1 (Familiarisation with the Aeroplane).",
+            "Confirmed static aspect-ratio hotspot viewer renders part explanations on hover/focus/tap without layout shift.",
+            "Configured E-Learning module registry in src/elearning/ for clean branch synchronization."
+          ],
+          "filesChanged": [
+            "src/elearning/index.ts",
+            "src/lib/learning-content.ts",
+            "src/components/learning-diagram.tsx"
+          ],
+          "uiPreview": {
+            "courseId": "pooley",
+            "chapterId": "chapter-01",
+            "sectionHighlight": "Interactive Figure Hotspots & Chapter 1 Familiarisation",
+            "beforeSummary": "Unsegregated workspace without dedicated E-Learning module task tracking or visual diff preview.",
+            "afterSummary": "Dedicated E-Learning reader with verified Chapter 1–4 interactive hotspot callouts and live visual change inspection."
+          }
+        }
+      ]
+    },
+    {
+      "id": "TASK-EL-02",
+      "title": "CAE ATPL 1: Air Law — Chapter Revision Summary Cards & ICAO Annex Cross-References",
+      "courseId": "airlaw",
+      "courseTitle": "CAE ATPL 1: Air Law",
+      "targetChapterId": "chapter-01",
+      "targetChapterLabel": "Ch 1: International Agreements and Organizations",
+      "priority": "medium",
+      "status": "assigned",
+      "assignedBy": "Vipul (Administrator)",
+      "assignedAt": "2026-11-02T03:40:00.000Z",
+      "updatedAt": "2026-11-02T03:40:00.000Z",
+      "allowedFiles": [
+        "src/lib/airlaw-content.ts",
+        "src/lib/elearning-courses.ts",
+        "src/components/assigned-courses-panel.tsx"
+      ],
+      "whatToDo": [
+        "Verify all 28 chapters of CAE ATPL 1: Air Law load cleanly in the CourseReaderView.",
+        "Ensure ICAO Annexes 1–19 tables and Chicago Convention articles render with clean monospace table spacing inside .learning-prose pre.",
+        "Log every chapter update in the E-Learning Developer Work Report before pushing."
+      ],
+      "whatNotToDo": [
+        "DO NOT touch FlightLogger routes (/operations, /schedule, /flights, /cbta, /invoicing, /sms).",
+        "DO NOT use per-chapter CSS overrides for tables — all fenced tables and text diagrams must use shared .learning-prose pre rules.",
+        "DO NOT change course assignment logic for other academy roles."
+      ],
+      "reports": []
+    },
+    {
+      "id": "TASK-EL-03",
+      "title": "CAE ATPL 2–4 Technical Modules (Airframes, Electrics & Powerplant) — Diagram & Chapter QA",
+      "courseId": "airframes",
+      "courseTitle": "CAE ATPL 2: Airframes & Systems",
+      "targetChapterId": "chapter-01",
+      "targetChapterLabel": "Ch 1: Fuselage, Wings and Stabilising Surfaces",
+      "priority": "medium",
+      "status": "assigned",
+      "assignedBy": "Vipul (Administrator)",
+      "assignedAt": "2026-11-02T03:45:00.000Z",
+      "updatedAt": "2026-11-02T03:45:00.000Z",
+      "allowedFiles": [
+        "src/lib/airframes-content.ts",
+        "src/lib/electrics-content.ts",
+        "src/lib/powerplant-content.ts"
+      ],
+      "whatToDo": [
+        "Check chapter navigation and progress calculation across Airframes (16 chapters), Electrics (17 chapters), and Powerplant (28 chapters).",
+        "Ensure courseProgress counts only available chapters with non-empty sections so placeholder chapters never skew completion percentages."
+      ],
+      "whatNotToDo": [
+        "DO NOT alter student flight logbook hours, CBTA grading, or aircraft maintenance records.",
+        "DO NOT modify package.json or install external packages without explicit approval from Vipul."
+      ],
+      "reports": []
+    }
+  ]
+}

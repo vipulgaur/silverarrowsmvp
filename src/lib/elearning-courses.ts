@@ -344,6 +344,20 @@ export function assignedCourseIds(
   }
 
   const assigned = new Set<CourseId>();
+  const isParthAccount =
+    userId === "u-parth" ||
+    targetEmail === "parth@flysilverarrows.com" ||
+    targetEmail === "parth.bhatt@flysilverarrows.com" ||
+    targetName === "parth bhatt";
+
+  // Parth Bhatt (E-Learning Developer) has E-Learning modules assigned by default unless explicitly unassigned
+  if (isParthAccount) {
+    for (const m of ELEARNING_MODULES) {
+      if (!courseEvents.has(m.id)) {
+        assigned.add(m.id);
+      }
+    }
+  }
 
   for (const [cid, acts] of courseEvents.entries()) {
     // Sort chronologically ascending (oldest first, newest last)

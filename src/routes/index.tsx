@@ -1,12 +1,14 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, BookOpen, CheckCircle2, Clock, FileDown, Info, Lock, Plane, Users, X } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { HomepageAviationSequence } from "@/components/homepage-aviation-sequence";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import { isElearningLockedSession } from "@/elearning/workspace-config";
 import { APP_BUILD_HASH } from "@/lib/build-info";
 import { downloadDifferenceReportPdf } from "@/lib/difference-report-pdf";
+import { useStore } from "@/lib/store";
 
 const TOP_BAR_LINKS = [
   {
@@ -57,6 +59,16 @@ export const Route = createFileRoute("/")({
 });
 
 function MinimalLandingPage() {
+  const { me } = useStore();
+  const navigate = useNavigate();
+  const isLockedToElearning = isElearningLockedSession(me);
+
+  useEffect(() => {
+    if (isLockedToElearning) {
+      void navigate({ to: "/elearning", replace: true });
+    }
+  }, [isLockedToElearning, navigate]);
+
   const [badgeHighlight, setBadgeHighlight] = useState(0);
   const [sequenceSettled, setSequenceSettled] = useState(false);
   const [activeTopBarSection, setActiveTopBarSection] = useState<TopBarSectionId | null>(null);
@@ -339,52 +351,54 @@ function MinimalLandingPage() {
                 </div>
               </div>
 
-              {/* Tile 2: Flight Logger / Operations OS */}
-              <div className="group relative flex flex-col justify-between rounded-3xl border border-border/80 bg-card/85 p-5 shadow-sm backdrop-blur-xl transition-all hover:border-amber-500/60 hover:shadow-xl sm:p-6">
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-500 ring-1 ring-amber-500/30 transition-colors group-hover:bg-amber-500 group-hover:text-white">
-                      <Plane className="h-5 w-5" />
+              {/* Tile 2: Flight Logger / Operations OS (Hidden for Parth Bhatt / E-Learning Only Sessions) */}
+              {!isLockedToElearning && (
+                <div className="group relative flex flex-col justify-between rounded-3xl border border-border/80 bg-card/85 p-5 shadow-sm backdrop-blur-xl transition-all hover:border-amber-500/60 hover:shadow-xl sm:p-6">
+                  <div>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-500 ring-1 ring-amber-500/30 transition-colors group-hover:bg-amber-500 group-hover:text-white">
+                        <Plane className="h-5 w-5" />
+                      </div>
+                      <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 font-mono">
+                        OPERATIONS OS
+                      </span>
                     </div>
-                    <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 font-mono">
-                      OPERATIONS OS
-                    </span>
+                    <h2 className="mt-4 text-xl font-extrabold tracking-tight sm:text-2xl text-foreground">
+                      Flight Operations OS
+                    </h2>
+                    <p className="mt-2 text-xs sm:text-sm text-muted-foreground leading-relaxed">
+                      Certified academy operations platform with dedicated role portals, digital pilot
+                      logbooks, fleet scheduling, and verified post-flight records.
+                    </p>
+                    <div className="mt-4 space-y-2 text-xs font-medium text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
+                        <span className="text-foreground">Student, CFI &amp; Ground School Portals</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
+                        <span className="text-foreground">Electronic Logbooks &amp; Fleet Scheduling</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
+                        <span className="text-foreground">Post-Flight Verification &amp; Audit Trail</span>
+                      </div>
+                    </div>
                   </div>
-                  <h2 className="mt-4 text-xl font-extrabold tracking-tight sm:text-2xl text-foreground">
-                    Flight Operations OS
-                  </h2>
-                  <p className="mt-2 text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                    Certified academy operations platform with dedicated role portals, digital pilot
-                    logbooks, fleet scheduling, and verified post-flight records.
-                  </p>
-                  <div className="mt-4 space-y-2 text-xs font-medium text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
-                      <span className="text-foreground">Student, CFI &amp; Ground School Portals</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
-                      <span className="text-foreground">Electronic Logbooks &amp; Fleet Scheduling</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
-                      <span className="text-foreground">Post-Flight Verification &amp; Audit Trail</span>
-                    </div>
-                  </div>
-                </div>
 
-                <div className="mt-6 pt-4 border-t border-border/60">
-                  <Link
-                    to="/login"
-                    data-testid="landing-btn-flight-logger"
-                    className="relative inline-flex items-center justify-center w-full px-5 py-3.5 text-sm font-black tracking-wide text-white rounded-2xl bg-gradient-to-b from-amber-500 via-amber-600 to-amber-700 shadow-[0_5px_0_0_#b45309,0_10px_20px_rgba(217,119,6,0.35)] border-t border-amber-300/40 hover:from-amber-400 hover:to-amber-600 hover:shadow-[0_6px_0_0_#b45309,0_12px_22px_rgba(217,119,6,0.4)] active:translate-y-1 active:shadow-[0_1px_0_0_#b45309,0_4px_8px_rgba(217,119,6,0.25)] transition-all cursor-pointer group/btn"
-                  >
-                    <Plane className="mr-2 h-4 w-4 drop-shadow" />
-                    <span>Enter Flight Operations</span>
-                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
-                  </Link>
+                  <div className="mt-6 pt-4 border-t border-border/60">
+                    <Link
+                      to="/login"
+                      data-testid="landing-btn-flight-logger"
+                      className="relative inline-flex items-center justify-center w-full px-5 py-3.5 text-sm font-black tracking-wide text-white rounded-2xl bg-gradient-to-b from-amber-500 via-amber-600 to-amber-700 shadow-[0_5px_0_0_#b45309,0_10px_20px_rgba(217,119,6,0.35)] border-t border-amber-300/40 hover:from-amber-400 hover:to-amber-600 hover:shadow-[0_6px_0_0_#b45309,0_12px_22px_rgba(217,119,6,0.4)] active:translate-y-1 active:shadow-[0_1px_0_0_#b45309,0_4px_8px_rgba(217,119,6,0.25)] transition-all cursor-pointer group/btn"
+                    >
+                      <Plane className="mr-2 h-4 w-4 drop-shadow" />
+                      <span>Enter Flight Operations</span>
+                      <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
+                    </Link>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Minimal Feature Highlights Bar: Revealed after Menu Cards */}

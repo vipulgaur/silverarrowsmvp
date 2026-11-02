@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { execSync } from "node:child_process";
+import fs from "node:fs";
 
 const ELEARNING_BRANCH = "parthbhatt";
 const MAIN_BRANCH = "main";
@@ -8,12 +9,16 @@ const ALLOWED_ELEARNING_PREFIXES = [
   "src/elearning/",
   "src/content/learning/",
   "src/assets/learning/",
+  "src/assets/airlaw/",
+  "src/assets/airframes/",
+  "src/assets/electrics/",
+  "src/assets/powerplant/",
   "src/routes/elearning.tsx",
   "src/routes/_shell.learning.index.tsx",
   "src/routes/_shell.learning.$chapterId.tsx",
-  "src/routes/_shell.portal.ground.tsx",
   "src/components/assigned-courses-panel.tsx",
   "src/components/learning-reader.tsx",
+  "src/components/learning-diagram.tsx",
   "src/components/learning-blocks.tsx",
   "src/components/air-law-chapter-experience.tsx",
   "src/components/familiarisation-chapter-experience.tsx",
@@ -56,13 +61,60 @@ try {
     const branches = run("git branch -a");
     console.log("=== SilverArrows E-Learning Branch & Workspace Status ===");
     console.log(`Current Branch : ${currentBranch}`);
-    console.log(`E-Learning Dev : ${ELEARNING_BRANCH}`);
-    console.log(`Primary Branch : ${MAIN_BRANCH}`);
+    console.log(`E-Learning Dev : ${ELEARNING_BRANCH} (Parth Bhatt — E-Learning Only)`);
+    console.log(`Primary Branch : ${MAIN_BRANCH} (Vipul — Full FlightLogger + E-Learning)`);
     console.log("\nAvailable Git Branches:");
     console.log(branches);
     console.log("\nAllowed E-Learning Paths for 'parthbhatt':");
     for (const p of ALLOWED_ELEARNING_PREFIXES) {
       console.log(`  - ${p}`);
+    }
+    process.exit(0);
+  }
+
+  if (mode === "--report") {
+    try {
+      run(`git fetch origin ${ELEARNING_BRANCH}`);
+    } catch {
+      // Offline fallback
+    }
+    let targetRef = `origin/${ELEARNING_BRANCH}`;
+    try {
+      run(`git rev-parse --verify ${targetRef}`);
+    } catch {
+      targetRef = ELEARNING_BRANCH;
+    }
+
+    console.log("====================================================================");
+    console.log("  PARTH BHATT (parthbhatt) — E-LEARNING ACTIVITY & DIFF REPORT");
+    console.log("====================================================================");
+    const recentCommits = run(`git log -n 8 --oneline ${targetRef}`);
+    console.log("\nRecent Commits on parthbhatt:");
+    console.log(recentCommits || "  (No commits)");
+
+    const diffStat = run(`git diff --stat ${MAIN_BRANCH}...${targetRef}`);
+    console.log(`\nFiles Changed on ${targetRef} vs ${MAIN_BRANCH}:`);
+    console.log(diffStat || "  (Branches are currently identical — no unmerged file diffs)");
+
+    if (fs.existsSync("src/elearning/dev-workspace-data.json")) {
+      const workspaceData = JSON.parse(
+        fs.readFileSync("src/elearning/dev-workspace-data.json", "utf8"),
+      );
+      console.log(`\nActive Directives (${workspaceData.tasks.length}):`);
+      for (const t of workspaceData.tasks) {
+        console.log(
+          `  • [${t.id}] ${t.title} (${t.courseTitle} · ${t.targetChapterLabel}) — Status: ${t.status.toUpperCase()}`,
+        );
+        console.log(`    What To Do     : ${t.whatToDo.join(" | ")}`);
+        console.log(`    What NOT To Do : ${t.whatNotToDo.join(" | ")}`);
+        if (t.reports && t.reports.length > 0) {
+          for (const r of t.reports) {
+            console.log(
+              `    -> Report [${r.id}] (${r.commitHash}): ${r.summary}`,
+            );
+          }
+        }
+      }
     }
     process.exit(0);
   }
@@ -94,13 +146,13 @@ try {
         console.error(`  ✗ ${v}`);
       }
       console.error(
-        "\nOnly files inside the E-Learning workspace are permitted on the 'parthbhatt' branch.",
+        "\nOnly files inside the E-Learning workspace are permitted on the 'parthbhatt' branch. FlightLogger files are strictly locked.",
       );
       process.exit(1);
     }
 
     console.log(
-      `✓ Boundary check passed (${changedFiles.length} E-Learning file(s) verified).`,
+      `✓ Boundary check passed (${changedFiles.length} E-Learning file(s) verified). Zero FlightLogger files touched.`,
     );
     process.exit(0);
   }
@@ -111,24 +163,44 @@ try {
       run(`git fetch origin ${ELEARNING_BRANCH}`);
       sourceRef = `origin/${ELEARNING_BRANCH}`;
     } catch {
-      // Fallback to local parthbhatt branch when working offline
       sourceRef = ELEARNING_BRANCH;
     }
 
     console.log(
       `Syncing E-Learning paths from '${sourceRef}' into '${currentBranch}'...`,
     );
-    const quotedPaths = ALLOWED_ELEARNING_PREFIXES.map((p) => `"${p}"`).join(" ");
-    execSync(`git checkout ${sourceRef} -- ${quotedPaths}`, {
-      stdio: "inherit",
+    const existingAllowed = ALLOWED_ELEARNING_PREFIXES.filter((p) => {
+      try {
+        const out = run(`git ls-tree -r --name-only ${sourceRef} -- "${p}"`);
+        return out.length > 0;
+      } catch {
+        return false;
+      }
     });
+    if (existingAllowed.length > 0) {
+      const quotedPaths = existingAllowed.map((p) => `"${p}"`).join(" ");
+      execSync(`git checkout ${sourceRef} -- ${quotedPaths}`, {
+        stdio: "inherit",
+      });
+    }
+    // Always ensure workspace-config.ts on main keeps ELEARNING_BRANCH_LOCK = false for Vipul
+    if (currentBranch === MAIN_BRANCH && fs.existsSync("src/elearning/workspace-config.ts")) {
+      const cfg = fs.readFileSync("src/elearning/workspace-config.ts", "utf8");
+      const unlocked = cfg.replace(
+        /export const ELEARNING_BRANCH_LOCK:\s*boolean\s*=\s*true;/g,
+        'export const ELEARNING_BRANCH_LOCK: boolean =\n  typeof import.meta !== "undefined" &&\n  import.meta.env?.VITE_ELEARNING_ONLY_MODE === "true";',
+      );
+      fs.writeFileSync("src/elearning/workspace-config.ts", unlocked, "utf8");
+    }
     console.log(
       `✓ Successfully synced E-Learning changes from '${sourceRef}' into '${currentBranch}'. FlightLogger core files remain untouched.`,
     );
     process.exit(0);
   }
 
-  console.error("Usage: node scripts/elearning-sync.mjs [--status | --check | --pull]");
+  console.error(
+    "Usage: node scripts/elearning-sync.mjs [--status | --report | --check | --pull]",
+  );
   process.exit(1);
 } catch (err) {
   console.error("Error running elearning-sync:", err.message || err);

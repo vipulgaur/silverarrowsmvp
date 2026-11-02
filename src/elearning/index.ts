@@ -1,7 +1,7 @@
 /**
  * Segregated E-Learning Workspace Barrel & Boundary Manifest
- * Branch Owner (E-Learning): parthbhatt
- * Full-Platform Owner (FlightLogger + E-Learning): main
+ * Branch Owner (E-Learning Only): parthbhatt (Parth Bhatt)
+ * Full-Platform Owner (FlightLogger + E-Learning): main (Vipul)
  */
 
 export * from "@/lib/elearning-courses";
@@ -21,6 +21,10 @@ export * from "@/lib/powerplant-illustrations";
 export * from "@/lib/universal-chapter-data";
 export * from "@/lib/chapter-01-redesign-data";
 
+export * from "./workspace-config";
+export * from "./dev-workspace";
+export * from "./dev-workspace-panel";
+
 export { AssignedCoursesPanel, CourseReaderView } from "@/components/assigned-courses-panel";
 export { LearningReader } from "@/components/learning-reader";
 export { AirLawChapterExperience } from "@/components/air-law-chapter-experience";
@@ -35,7 +39,6 @@ export const ELEARNING_BRANCH_CONFIG = {
     "/elearning",
     "/learning",
     "/learning/$chapterId",
-    "/portal/ground",
   ],
   allowedPathPrefixes: [
     "src/elearning/",
@@ -44,7 +47,6 @@ export const ELEARNING_BRANCH_CONFIG = {
     "src/routes/elearning.tsx",
     "src/routes/_shell.learning.index.tsx",
     "src/routes/_shell.learning.$chapterId.tsx",
-    "src/routes/_shell.portal.ground.tsx",
     "src/components/assigned-courses-panel.tsx",
     "src/components/learning-reader.tsx",
     "src/components/learning-blocks.tsx",

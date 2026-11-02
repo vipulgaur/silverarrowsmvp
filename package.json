@@ -19,8 +19,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "elearning:status": "node scripts/elearning-sync.mjs --status",
+    "elearning:report": "node scripts/elearning-sync.mjs --report",
     "elearning:check": "node scripts/elearning-sync.mjs --check",
-    "elearning:pull": "node scripts/elearning-sync.mjs --pull"
+    "elearning:verify": "node scripts/elearning-sync.mjs --check",
+    "elearning:pull": "node scripts/elearning-sync.mjs --pull",
+    "dev:elearning": "VITE_ELEARNING_ONLY_MODE=true vite dev"
   },
   "overrides": {
     "rolldown": "1.2.1"
