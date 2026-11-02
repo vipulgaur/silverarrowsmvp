@@ -1,5 +1,6 @@
-import type { CourseId } from "@/lib/elearning-courses";
+import type { CourseId, ELearningModule } from "@/lib/elearning-courses";
 import initialWorkspaceJson from "./dev-workspace-data.json";
+import initialCustomModulesJson from "./custom-modules.json";
 
 export type DevTaskStatus =
   | "assigned"
@@ -53,6 +54,15 @@ export interface ELearningDevTask {
   adminReviewNote?: string;
 }
 
+export interface LiveGitHubCommitSummary {
+  sha: string;
+  shortSha: string;
+  message: string;
+  authorName: string;
+  date: string;
+  filesChanged: string[];
+}
+
 export interface ELearningWorkspaceState {
   repository: string;
   collaborator: {
@@ -66,13 +76,17 @@ export interface ELearningWorkspaceState {
   lastSyncedCommit: string;
   lastSyncedAt: string;
   tasks: ELearningDevTask[];
+  liveGitHubCommit?: LiveGitHubCommitSummary;
+  remoteCustomModules?: ELearningModule[];
 }
 
 export const ELEARNING_DEV_WORKSPACE_STORAGE_KEY =
   "silverarrows-elearning-dev-workspace-v1";
 
-const DEFAULT_STATE: ELearningWorkspaceState =
-  initialWorkspaceJson as unknown as ELearningWorkspaceState;
+const DEFAULT_STATE: ELearningWorkspaceState = {
+  ...(initialWorkspaceJson as unknown as ELearningWorkspaceState),
+  remoteCustomModules: (initialCustomModulesJson.modules ?? []) as ELearningModule[],
+};
 
 /**
  * Reads the current E-Learning Developer Workspace state, merging the Git-tracked
@@ -90,7 +104,6 @@ export function readELearningWorkspace(): ELearningWorkspaceState {
       return DEFAULT_STATE;
     }
 
-    // Merge baseline tasks from Git JSON with stored tasks so new Git commits always show up
     const storedById = new Map(parsed.tasks.map((t) => [t.id, t]));
     const mergedTasks: ELearningDevTask[] = [];
 
@@ -99,7 +112,6 @@ export function readELearningWorkspace(): ELearningWorkspaceState {
       if (!localTask) {
         mergedTasks.push(baseTask);
       } else {
-        // Combine reports by ID
         const reportMap = new Map<string, ELearningWorkReport>();
         for (const r of baseTask.reports ?? []) reportMap.set(r.id, r);
         for (const r of localTask.reports ?? []) reportMap.set(r.id, r);
@@ -115,7 +127,6 @@ export function readELearningWorkspace(): ELearningWorkspaceState {
       }
     }
 
-    // Prepend any newly created tasks from local storage
     const customLocalTasks = Array.from(storedById.values());
     return {
       ...DEFAULT_STATE,
@@ -142,6 +153,95 @@ export function writeELearningWorkspace(
     }
   }
   return next;
+}
+
+/**
+ * Fetches live commits, task reports, and newly added modules directly from
+ * GitHub (`vipulgaur/silverarrowsmvp` branch `parthbhatt`) whenever Vipul refreshes his dashboard.
+ */
+export async function syncWorkspaceFromGitHubParthBranch(
+  current: ELearningWorkspaceState,
+): Promise<ELearningWorkspaceState> {
+  const ts = Date.now();
+  let nextState = { ...current };
+
+  try {
+    // 1. Fetch latest commit on branch `parthbhatt`
+    const commitRes = await fetch(
+      `https://api.github.com/repos/vipulgaur/silverarrowsmvp/commits/parthbhatt?t=${ts}`,
+      { headers: { Accept: "application/vnd.github.v3+json" } },
+    );
+    if (commitRes.ok) {
+      const commitJson = (await commitRes.json()) as {
+        sha?: string;
+        commit?: {
+          message?: string;
+          author?: { name?: string; date?: string };
+        };
+        files?: { filename: string }[];
+      };
+      if (commitJson.sha) {
+        const shortSha = commitJson.sha.slice(0, 7);
+        nextState = {
+          ...nextState,
+          lastSyncedCommit: shortSha,
+          lastSyncedAt: new Date().toISOString(),
+          liveGitHubCommit: {
+            sha: commitJson.sha,
+            shortSha,
+            message: commitJson.commit?.message ?? "Updated E-Learning branch",
+            authorName: commitJson.commit?.author?.name ?? "Parth Bhatt",
+            date: commitJson.commit?.author?.date ?? new Date().toISOString(),
+            filesChanged: (commitJson.files ?? []).map((f) => f.filename),
+          },
+        };
+      }
+    }
+
+    // 2. Fetch live `src/elearning/dev-workspace-data.json` from `parthbhatt` branch
+    const wsRes = await fetch(
+      `https://raw.githubusercontent.com/vipulgaur/silverarrowsmvp/parthbhatt/src/elearning/dev-workspace-data.json?t=${ts}`,
+    );
+    if (wsRes.ok) {
+      const remoteWs = (await wsRes.json()) as Partial<ELearningWorkspaceState>;
+      if (remoteWs && Array.isArray(remoteWs.tasks)) {
+        const localById = new Map(nextState.tasks.map((t) => [t.id, t]));
+        for (const rTask of remoteWs.tasks) {
+          const existing = localById.get(rTask.id);
+          if (!existing) {
+            localById.set(rTask.id, rTask);
+          } else {
+            const repMap = new Map<string, ELearningWorkReport>();
+            for (const rep of existing.reports ?? []) repMap.set(rep.id, rep);
+            for (const rep of rTask.reports ?? []) repMap.set(rep.id, rep);
+            localById.set(rTask.id, {
+              ...existing,
+              ...rTask,
+              reports: Array.from(repMap.values()).sort((a, b) =>
+                b.submittedAt.localeCompare(a.submittedAt),
+              ),
+            });
+          }
+        }
+        nextState.tasks = Array.from(localById.values());
+      }
+    }
+
+    // 3. Fetch live `src/elearning/custom-modules.json` from `parthbhatt` branch
+    const modRes = await fetch(
+      `https://raw.githubusercontent.com/vipulgaur/silverarrowsmvp/parthbhatt/src/elearning/custom-modules.json?t=${ts}`,
+    );
+    if (modRes.ok) {
+      const remoteMods = (await modRes.json()) as { modules?: ELearningModule[] };
+      if (remoteMods && Array.isArray(remoteMods.modules)) {
+        nextState.remoteCustomModules = remoteMods.modules;
+      }
+    }
+  } catch {
+    // Graceful offline fallback
+  }
+
+  return writeELearningWorkspace(nextState);
 }
 
 /**

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -14,6 +14,7 @@ import {
   Lock,
   Pencil,
   Plus,
+  RefreshCw,
   Send,
   ShieldAlert,
   ShieldCheck,
@@ -51,6 +52,7 @@ import {
   createDirectiveForParth,
   readELearningWorkspace,
   submitParthWorkReport,
+  syncWorkspaceFromGitHubParthBranch,
   updateDirectiveByAdmin,
   type DevTaskPriority,
   type DevTaskStatus,
@@ -136,6 +138,28 @@ export function ELearningDevWorkspacePanel({
 }) {
   const { data, me, update, log } = useStore();
   const [workspace, setWorkspace] = useState(() => readELearningWorkspace());
+  const [syncingGitHub, setSyncingGitHub] = useState(false);
+
+  // Auto-sync live from GitHub `parthbhatt` branch whenever the dashboard loads/refreshes
+  useEffect(() => {
+    let active = true;
+    void syncWorkspaceFromGitHubParthBranch(readELearningWorkspace()).then((fresh) => {
+      if (active) setWorkspace(fresh);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function handleRefreshFromGitHub() {
+    setSyncingGitHub(true);
+    const fresh = await syncWorkspaceFromGitHubParthBranch(workspace);
+    setWorkspace(fresh);
+    setSyncingGitHub(false);
+    toast.success(
+      `Synced live from GitHub (origin/parthbhatt · Commit #${fresh.lastSyncedCommit})`,
+    );
+  }
 
   // Admin: New Task Directive Modal
   const [newDirectiveOpen, setNewDirectiveOpen] = useState(false);
@@ -441,6 +465,17 @@ export function ELearningDevWorkspacePanel({
 
         {/* Action Buttons for Vipul vs Parth */}
         <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={syncingGitHub}
+            onClick={() => void handleRefreshFromGitHub()}
+            data-testid="btn-sync-github-parthbhatt"
+            className="rounded-full font-semibold"
+          >
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${syncingGitHub ? "animate-spin" : ""}`} />
+            {syncingGitHub ? "Syncing GitHub…" : "Sync from GitHub (parthbhatt)"}
+          </Button>
           {isAdmin && (
             <>
               <Button
@@ -472,6 +507,45 @@ export function ELearningDevWorkspacePanel({
           )}
         </div>
       </div>
+
+      {/* LIVE GITHUB COMMIT & NEW MODULE FEED FROM `origin/parthbhatt` */}
+      {workspace.liveGitHubCommit && (
+        <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1 rounded-full bg-primary px-2.5 py-0.5 text-[10px] font-bold text-primary-foreground">
+                <GitCommit className="h-3 w-3" /> LIVE GITHUB BRANCH STATUS (parthbhatt)
+              </span>
+              <code className="font-mono font-bold text-primary">
+                #{workspace.liveGitHubCommit.shortSha}
+              </code>
+              <span className="text-muted-foreground">
+                by <strong className="text-foreground">{workspace.liveGitHubCommit.authorName}</strong> ·{" "}
+                {new Date(workspace.liveGitHubCommit.date).toLocaleString()}
+              </span>
+            </div>
+            <p className="font-semibold text-foreground">{workspace.liveGitHubCommit.message}</p>
+            {workspace.liveGitHubCommit.filesChanged.length > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="text-muted-foreground font-medium">Files in latest commit:</span>
+                {workspace.liveGitHubCommit.filesChanged.slice(0, 6).map((f, idx) => (
+                  <code
+                    key={idx}
+                    className="rounded bg-card px-1.5 py-0.5 font-mono text-[10px] border border-border"
+                  >
+                    {f}
+                  </code>
+                ))}
+              </div>
+            )}
+          </div>
+          {workspace.remoteCustomModules && workspace.remoteCustomModules.length > 0 && (
+            <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-emerald-700 dark:text-emerald-300 font-bold">
+              +{workspace.remoteCustomModules.length} New Custom Module(s) Pushed by Parth!
+            </div>
+          )}
+        </div>
+      )}
 
       {/* VIPUL ADMIN BAR: 1-Click Control of Which E-Learning Modules Parth Bhatt Has Assigned */}
       {isAdmin && (
