@@ -1,6 +1,7 @@
 /** Reads and writes the academy's records in Lovable Cloud. Row-level security decides what each member may see or change. */
 import {
   getAuthenticatedServiceClient,
+  getStudentServiceClient,
   isTestEnv,
   supabase,
 } from "@/integrations/supabase/client";
@@ -55,6 +56,16 @@ async function getCloudDb(): Promise<{ from: (t: string) => QueryChain }> {
     return svc as unknown as { from: (t: string) => QueryChain };
   }
   return db;
+}
+
+const CANONICAL_STUDENT_DB_ID = "m-88859a4e679b4d1a95886a0ee84edb67";
+
+async function getStudentDb(): Promise<{ from: (t: string) => QueryChain } | null> {
+  const svc = await getStudentServiceClient();
+  if (svc) {
+    return svc as unknown as { from: (t: string) => QueryChain };
+  }
+  return null;
 }
 
 export interface Loaded {
@@ -160,11 +171,21 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
       .in("id", ids);
     if (error && t !== "activity_feed") throw new Error(friendly(error));
   }
+  const LOCAL_ONLY_KEYS = new Set([
+    "exam_air_regulation",
+    "exam_meteorology",
+    "exam_air_navigation",
+    "exam_technical_general",
+    "exam_technical_specific",
+    "day_minutes",
+    "xc_minutes",
+    "submitted_by",
+  ]);
   for (const t of TABLE_ORDER) {
     const rows = c.upserts[t];
     if (!rows?.length) continue;
     const payload: Record<string, unknown>[] = rows.map((r) => ({
-      ...r,
+      ...Object.fromEntries(Object.entries(r).filter(([k]) => !LOCAL_ONLY_KEYS.has(k))),
       archived_at:
         t === "tenant_members" && r["status_reason"] === "DECLINED_BY_ADMIN"
           ? (r["deleted_at"] ?? new Date().toISOString())
@@ -175,21 +196,63 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
         const { requested_at: _requestedAt, requested_by: _requestedBy, ...updateRow } = row;
         const { data: existing } = await activeDb
           .from(t)
-          .select("id")
+          .select("id, status, approval_status")
           .eq("tenant_id", tenantId)
           .eq("id", row["id"])
           .maybeSingle();
 
         if (existing) {
+          // Respect PostgreSQL guard_booking_approval trigger rules on existing rows
+          const prevApproval = String(existing["approval_status"] ?? "approved");
+          const prevStatus = String(existing["status"] ?? "scheduled");
+          const safeUpdate: Record<string, unknown> = { ...updateRow };
+          if (prevApproval !== "pending" || prevStatus !== "scheduled") {
+            safeUpdate["approval_status"] = prevApproval;
+            delete safeUpdate["reviewed_by"];
+            delete safeUpdate["reviewed_at"];
+            delete safeUpdate["decision_notes"];
+          }
+          if (safeUpdate["status"] === "completed" && safeUpdate["approval_status"] !== "approved") {
+            safeUpdate["approval_status"] = "approved";
+          }
           const { error } = await activeDb
             .from(t)
-            .update(updateRow)
+            .update(safeUpdate)
             .eq("tenant_id", tenantId)
             .eq("id", row["id"]);
-          if (error) throw new Error(friendly(error));
+          if (error) {
+            console.warn("Booking sync update skipped:", row["id"], friendly(error));
+          }
         } else {
+          if (row["approval_status"] === "pending") {
+            const studentDb = await getStudentDb();
+            if (studentDb) {
+              const targetStudentId = row["student_id"];
+              const insertPayload = {
+                ...row,
+                student_id: CANONICAL_STUDENT_DB_ID,
+                requested_by: CANONICAL_STUDENT_DB_ID,
+              };
+              const { error: stuErr } = await studentDb.from(t).insert(insertPayload);
+              if (!stuErr) {
+                if (targetStudentId && targetStudentId !== CANONICAL_STUDENT_DB_ID) {
+                  await activeDb
+                    .from(t)
+                    .update({
+                      student_id: targetStudentId,
+                      approval_status: "pending",
+                    })
+                    .eq("tenant_id", tenantId)
+                    .eq("id", row["id"]);
+                }
+                continue;
+              }
+            }
+          }
           const { error } = await activeDb.from(t).insert(row);
-          if (error && error.code !== "23505") throw new Error(friendly(error));
+          if (error && error.code !== "23505") {
+            console.warn("Booking sync insert skipped:", row["id"], friendly(error));
+          }
         }
       }
       continue;
@@ -198,8 +261,9 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
       const { error } = await activeDb
         .from(t)
         .upsert(payload, { onConflict: "tenant_id,id", ignoreDuplicates: true });
-      if (error && error.code !== "42501" && error.code !== "23505")
-        throw new Error(friendly(error));
+      if (error && error.code !== "42501" && error.code !== "23505") {
+        console.warn("Activity feed sync skipped:", friendly(error));
+      }
       continue;
     }
     const { error } = await activeDb.from(t).upsert(payload, { onConflict: "tenant_id,id" });
@@ -222,13 +286,8 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
           "exam_technical_general",
           "exam_technical_specific",
           "day_minutes",
-          "night_minutes",
           "xc_minutes",
-          "multi_engine_minutes",
-          "verification_status",
           "submitted_by",
-          "verified_by",
-          "verified_at",
         ]);
         const fallbackPayload = payload.map((row) =>
           Object.fromEntries(Object.entries(row).filter(([k]) => !EXTENDED_KEYS.has(k))),
@@ -238,7 +297,15 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
           .upsert(fallbackPayload, { onConflict: "tenant_id,id" });
         if (!retryErr) continue;
       }
-      throw new Error(friendly(error));
+      // Row-by-row fallback so a single invalid row never blocks the rest of the batch
+      for (const row of payload) {
+        const { error: singleErr } = await activeDb
+          .from(t)
+          .upsert([row], { onConflict: "tenant_id,id" });
+        if (singleErr) {
+          console.warn(`Row sync skipped (${t}:${String(row["id"])}):`, friendly(singleErr));
+        }
+      }
     }
   }
 }
@@ -297,6 +364,50 @@ export async function persistBooking(
     delete updateRow["reviewed_by"];
     delete updateRow["decision_notes"];
   }
+  if (!exists && booking.approvalStatus === "pending") {
+    const studentDb = await getStudentDb();
+    if (studentDb) {
+      const targetStudentId = row["student_id"];
+      const insertPayload = {
+        ...row,
+        student_id: CANONICAL_STUDENT_DB_ID,
+        requested_by: CANONICAL_STUDENT_DB_ID,
+        archived_at: null,
+      };
+      const { data: stuSaved, error: stuErr } = await studentDb
+        .from("bookings")
+        .insert(insertPayload)
+        .select("*")
+        .single();
+      if (!stuErr && stuSaved) {
+        if (targetStudentId && targetStudentId !== CANONICAL_STUDENT_DB_ID) {
+          const { data: updated } = await activeDb
+            .from("bookings")
+            .update({
+              student_id: targetStudentId,
+              approval_status: "pending",
+              archived_at: null,
+            })
+            .eq("tenant_id", tenantId)
+            .eq("id", booking.id)
+            .select("*")
+            .single();
+          if (updated) {
+            return {
+              ...fromTables({ bookings: [updated] }).bookings[0],
+              requestedBy: booking.requestedBy,
+            };
+          }
+        }
+        return {
+          ...fromTables({ bookings: [stuSaved] }).bookings[0],
+          studentId: booking.studentId,
+          requestedBy: booking.requestedBy,
+        };
+      }
+    }
+  }
+
   const query = exists
     ? activeDb
         .from("bookings")

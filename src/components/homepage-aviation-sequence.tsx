@@ -663,7 +663,9 @@ export function HomepageAviationSequence({
       if (startTimeRef.current === null) {
         startTimeRef.current = now;
       }
-      const elapsedSec = (now - startTimeRef.current) / 1000;
+      // Speed multiplier: fast-forwards the 4.35s flight into ~1.3 seconds for instant responsive loading
+      const SPEED_FACTOR = 3.2;
+      const elapsedSec = ((now - startTimeRef.current) / 1000) * SPEED_FACTOR;
 
       if (elapsedSec >= SEQUENCE_TIMING.handoffResolve) {
         updatePhase("settled");
@@ -948,6 +950,51 @@ export function HomepageAviationSequence({
                 <circle cx="260" cy="260" r="168" />
               </clipPath>
 
+              {/* Topographical Mountain Terrain & Synthetic Vision Gradients */}
+              <linearGradient id="saTopoSkyHaze" x1="260" y1="90" x2="260" y2="240" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#0f172a" stopOpacity="0.95" />
+                <stop offset="65%" stopColor="#1e293b" stopOpacity="0.9" />
+                <stop offset="100%" stopColor="#0284c7" stopOpacity="0.25" />
+              </linearGradient>
+
+              <linearGradient id="saValleyFloor" x1="260" y1="200" x2="260" y2="440" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#0b1728" />
+                <stop offset="45%" stopColor="#0f2238" />
+                <stop offset="100%" stopColor="#060c16" />
+              </linearGradient>
+
+              <linearGradient id="saNorthRidge1" x1="260" y1="90" x2="260" y2="220" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#254269" stopOpacity="0.9" />
+                <stop offset="100%" stopColor="#132742" stopOpacity="0.85" />
+              </linearGradient>
+
+              <linearGradient id="saNorthRidge2" x1="260" y1="90" x2="260" y2="180" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#3b6294" stopOpacity="0.95" />
+                <stop offset="100%" stopColor="#1d375a" stopOpacity="0.9" />
+              </linearGradient>
+
+              <linearGradient id="saSouthRidge1" x1="260" y1="300" x2="260" y2="440" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#142844" stopOpacity="0.85" />
+                <stop offset="100%" stopColor="#26466f" stopOpacity="0.9" />
+              </linearGradient>
+
+              <linearGradient id="saSouthRidge2" x1="260" y1="340" x2="260" y2="440" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#1c365b" stopOpacity="0.9" />
+                <stop offset="100%" stopColor="#385e8d" stopOpacity="0.95" />
+              </linearGradient>
+
+              <linearGradient id="saRunwaySurfaceGrad" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#060a12" />
+                <stop offset="50%" stopColor="#0f172a" />
+                <stop offset="100%" stopColor="#060a12" />
+              </linearGradient>
+
+              <linearGradient id="saGlideslopeBeam" x1="420" y1="180" x2="174" y2="324" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#38bdf8" stopOpacity="0.1" />
+                <stop offset="60%" stopColor="#38bdf8" stopOpacity="0.4" />
+                <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.95" />
+              </linearGradient>
+
               <linearGradient id="saAdiSkyGrad" x1="260" y1="60" x2="260" y2="260" gradientUnits="userSpaceOnUse">
                 <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.22" />
                 <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.04" />
@@ -1091,76 +1138,143 @@ export function HomepageAviationSequence({
               <polygon points="260,44 255,36 265,36" fill="var(--primary)" />
             </g>
 
-            {/* 3. INNER GYRO SPHERE (ARTIFICIAL HORIZON + RADAR + FLIGHT PLAN) */}
+            {/* 3. INNER COMPASS MAP: HIGH-FIDELITY MOUNTAINS & AIRSTRIP LANDING RUNWAY */}
             <g clipPath="url(#saInnerGyroSphere)">
               <g
                 ref={horizonGroupRef}
                 style={{
-                  opacity: mode === "nav-radar" ? 0.35 : 0.92,
+                  opacity: 0.96,
                   transition: "opacity 300ms ease",
                 }}
               >
-                <rect x="60" y="-120" width="400" height="380" fill="url(#saAdiSkyGrad)" />
-                <rect x="60" y="260" width="400" height="380" fill="url(#saAdiTerrainGrad)" />
+                {/* 1. Atmospheric Horizon & Deep Valley Base Sky */}
+                <rect x="60" y="-120" width="400" height="380" fill="url(#saTopoSkyHaze)" />
+                <rect x="60" y="240" width="400" height="380" fill="url(#saValleyFloor)" />
+
+                {/* 2. Topographical Elevation Isolines (Valley to Peaks) */}
+                <g stroke="#38bdf8" strokeOpacity="0.18" strokeWidth="0.8" fill="none">
+                  <ellipse cx="260" cy="270" rx="140" ry="85" strokeDasharray="3 4" />
+                  <ellipse cx="260" cy="270" rx="110" ry="65" />
+                  <ellipse cx="260" cy="270" rx="80" ry="45" strokeDasharray="4 4" />
+                </g>
+
+                {/* 3. Winding Glacial Valley River & Approach Waterway */}
+                <path
+                  d="M 60 295 Q 120 280 180 300 Q 240 320 310 290 Q 380 270 460 285"
+                  stroke="#0284c7"
+                  strokeOpacity="0.35"
+                  strokeWidth="3.5"
+                  fill="none"
+                />
+
+                {/* 4. Northern Mountain Ranges (Mt. Eagle & North Ridge) */}
+                <g>
+                  {/* Outer Ridge Layer (2,000' MSL) */}
+                  <path
+                    d="M 60 240 Q 115 175 180 195 Q 240 155 310 180 Q 375 145 460 205 L 460 60 L 60 60 Z"
+                    fill="url(#saNorthRidge1)"
+                    stroke="#38bdf8"
+                    strokeWidth="1"
+                    strokeOpacity="0.3"
+                  />
+                  {/* High Ridge Layer (3,200' MSL) */}
+                  <path
+                    d="M 80 200 Q 130 145 185 160 Q 245 120 305 145 Q 365 115 440 170 L 440 60 L 80 60 Z"
+                    fill="url(#saNorthRidge2)"
+                    stroke="#38bdf8"
+                    strokeWidth="1"
+                    strokeOpacity="0.45"
+                  />
+                  {/* Rocky Summit Peaks (Mt. Eagle 4,280' & North Spur 3,650') */}
+                  <path
+                    d="M 125 165 L 165 115 L 205 165 Z"
+                    fill="#3b6294"
+                    stroke="#93c5fd"
+                    strokeWidth="1"
+                    strokeOpacity="0.7"
+                  />
+                  <path
+                    d="M 305 155 L 340 110 L 375 155 Z"
+                    fill="#3b6294"
+                    stroke="#93c5fd"
+                    strokeWidth="1"
+                    strokeOpacity="0.7"
+                  />
+                  {/* Peak Altitude Labels */}
+                  <g fontFamily="var(--font-learning-mono)">
+                    <text x="165" y="105" textAnchor="middle" fill="#93c5fd" fontSize="7.5" fontWeight="800">
+                      ▲ MT. EAGLE 4,280'
+                    </text>
+                    <text x="340" y="100" textAnchor="middle" fill="#93c5fd" fontSize="7.5" fontWeight="800">
+                      ▲ NORTH SPUR 3,650'
+                    </text>
+                  </g>
+                </g>
+
+                {/* 5. Southern Mountain Ranges (South Ridge & Falcon Pass) */}
+                <g>
+                  {/* Outer Ridge Layer (2,000' MSL) */}
+                  <path
+                    d="M 60 290 Q 125 330 190 315 Q 255 350 325 330 Q 385 365 460 320 L 460 460 L 60 460 Z"
+                    fill="url(#saSouthRidge1)"
+                    stroke="#38bdf8"
+                    strokeWidth="1"
+                    strokeOpacity="0.3"
+                  />
+                  {/* High Ridge Layer (2,800' MSL) */}
+                  <path
+                    d="M 90 325 Q 150 360 215 340 Q 280 380 345 355 Q 405 390 440 350 L 440 460 L 90 460 Z"
+                    fill="url(#saSouthRidge2)"
+                    stroke="#38bdf8"
+                    strokeWidth="1"
+                    strokeOpacity="0.45"
+                  />
+                  {/* Summit Peak (South Ridge 3,120' & Falcon Pass 2,240') */}
+                  <path
+                    d="M 315 365 L 350 410 L 385 365 Z"
+                    fill="#385e8d"
+                    stroke="#93c5fd"
+                    strokeWidth="1"
+                    strokeOpacity="0.65"
+                  />
+                  {/* Altitude Labels */}
+                  <g fontFamily="var(--font-learning-mono)">
+                    <text x="350" y="425" textAnchor="middle" fill="#93c5fd" fontSize="7.5" fontWeight="800">
+                      ▲ SOUTH RIDGE 3,120'
+                    </text>
+                    <text x="155" y="380" textAnchor="middle" fill="#93c5fd" fontSize="7" fontWeight="700">
+                      ▲ FALCON PASS 2,240'
+                    </text>
+                  </g>
+                </g>
+
+                {/* 6. Precision Synthetic Vision Flight Corridor Guides */}
                 <line
                   x1="70"
                   y1="260"
                   x2="450"
                   y2="260"
                   stroke="var(--primary)"
-                  strokeOpacity="0.55"
-                  strokeWidth="1.5"
+                  strokeOpacity="0.35"
+                  strokeWidth="1.2"
+                  strokeDasharray="6 4"
                 />
 
-                {[-64, -48, -32, -16, 16, 32].map((offsetY) => {
-                  const isTen = Math.abs(offsetY) % 32 === 0;
-                  const halfW = isTen ? 34 : 18;
-                  const degVal = Math.abs(offsetY / 3.2);
-                  return (
-                    <g key={offsetY} opacity="0.62">
-                      <line
-                        x1={260 - halfW}
-                        y1={260 + offsetY}
-                        x2={260 - 8}
-                        y2={260 + offsetY}
-                        stroke="var(--foreground)"
-                        strokeWidth="1.4"
-                      />
-                      <line
-                        x1={260 + 8}
-                        y1={260 + offsetY}
-                        x2={260 + halfW}
-                        y2={260 + offsetY}
-                        stroke="var(--foreground)"
-                        strokeWidth="1.4"
-                      />
-                      {isTen && (
-                        <>
-                          <text
-                            x={260 - halfW - 6}
-                            y={260 + offsetY + 3}
-                            textAnchor="end"
-                            fill="var(--muted-foreground)"
-                            fontSize="8"
-                            fontFamily="var(--font-learning-mono)"
-                          >
-                            {degVal}
-                          </text>
-                          <text
-                            x={260 + halfW + 6}
-                            y={260 + offsetY + 3}
-                            textAnchor="start"
-                            fill="var(--muted-foreground)"
-                            fontSize="8"
-                            fontFamily="var(--font-learning-mono)"
-                          >
-                            {degVal}
-                          </text>
-                        </>
-                      )}
-                    </g>
-                  );
-                })}
+                {/* 3.0° RNAV / ILS Glidepath Beam leading into Runway */}
+                <path
+                  d="M 440 185 L 232 296 L 116 352"
+                  stroke="url(#saGlideslopeBeam)"
+                  strokeWidth="2.5"
+                  strokeDasharray="4 3"
+                />
+
+                {/* Aerodrome Landing Telemetry Tag */}
+                <g transform="translate(260, 240)">
+                  <rect x="-92" y="-10" width="184" height="20" rx="6" fill="#08101e" fillOpacity="0.88" stroke="#38bdf8" strokeOpacity="0.5" strokeWidth="0.8" />
+                  <text x="0" y="3.5" textAnchor="middle" fill="#38bdf8" fontSize="7" fontWeight="800" fontFamily="var(--font-learning-mono)">
+                    SILVER ARROWS AIRSTRIP · RWY 27L · ELEV 1,420'
+                  </text>
+                </g>
               </g>
 
               <g stroke="var(--border)" strokeOpacity="0.45" strokeWidth="1" strokeDasharray="3 5">
@@ -1169,18 +1283,6 @@ export function HomepageAviationSequence({
                 <line x1="92" y1="260" x2="428" y2="260" />
                 <line x1="260" y1="92" x2="260" y2="428" />
               </g>
-
-              {mode === " aerodynamics" && (
-                <g opacity="0.78" stroke="var(--primary)" strokeWidth="1.4">
-                  <path
-                    d="M 120 260 C 175 215, 290 220, 398 260 C 295 268, 180 268, 120 260 Z"
-                    fill="var(--primary)"
-                    fillOpacity="0.12"
-                  />
-                  <path d="M 105 242 Q 250 192 412 244" strokeDasharray="4 4" fill="none" />
-                  <path d="M 105 276 Q 255 284 412 274" strokeDasharray="4 4" fill="none" />
-                </g>
-              )}
 
               <g ref={radarSweepRef} transform="rotate(0 260 260)">
                 <path
@@ -1211,26 +1313,98 @@ export function HomepageAviationSequence({
                 style={{ transition: "opacity 300ms ease" }}
               >
                 <g transform="translate(174, 324) rotate(-25.8)">
+                  {/* Detailed Asphalt Runway Strip (RWY 09L / 27R) */}
                   <rect
-                    x="-64"
-                    y="-7"
-                    width="128"
-                    height="14"
-                    rx="2"
-                    fill="var(--card)"
-                    fillOpacity="0.8"
-                    stroke="var(--border)"
-                    strokeWidth="1"
+                    x="-75"
+                    y="-12"
+                    width="150"
+                    height="24"
+                    rx="3"
+                    fill="url(#saRunwaySurfaceGrad)"
+                    stroke="#38bdf8"
+                    strokeWidth="1.2"
+                    strokeOpacity="0.8"
                   />
+                  {/* White Runway Edge Guidelines */}
+                  <line x1="-74" y1="-10" x2="74" y2="-10" stroke="#ffffff" strokeWidth="0.8" strokeOpacity="0.9" />
+                  <line x1="-74" y1="10" x2="74" y2="10" stroke="#ffffff" strokeWidth="0.8" strokeOpacity="0.9" />
+
+                  {/* Threshold Stripes (Piano Keys) Departure & Arrival Ends */}
+                  {[-8, -5, -2, 1, 4, 7].map((offsetY) => (
+                    <line
+                      key={`th-dep-${offsetY}`}
+                      x1="-72"
+                      y1={offsetY}
+                      x2="-63"
+                      y2={offsetY}
+                      stroke="#ffffff"
+                      strokeWidth="1.2"
+                    />
+                  ))}
+                  {[-8, -5, -2, 1, 4, 7].map((offsetY) => (
+                    <line
+                      key={`th-arr-${offsetY}`}
+                      x1="63"
+                      y1={offsetY}
+                      x2="72"
+                      y2={offsetY}
+                      stroke="#ffffff"
+                      strokeWidth="1.2"
+                    />
+                  ))}
+
+                  {/* Runway Stencil Designators 09L / 27R */}
+                  <text
+                    x="-52"
+                    y="3"
+                    fill="#ffffff"
+                    fontSize="7"
+                    fontWeight="900"
+                    fontFamily="var(--font-learning-mono)"
+                    textAnchor="middle"
+                  >
+                    09L
+                  </text>
+                  <text
+                    x="52"
+                    y="3"
+                    fill="#ffffff"
+                    fontSize="7"
+                    fontWeight="900"
+                    fontFamily="var(--font-learning-mono)"
+                    textAnchor="middle"
+                  >
+                    27R
+                  </text>
+
+                  {/* Aiming Point Touchdown Zone Blocks */}
+                  <rect x="-36" y="-7" width="12" height="3" fill="#ffffff" />
+                  <rect x="-36" y="4" width="12" height="3" fill="#ffffff" />
+                  <rect x="24" y="-7" width="12" height="3" fill="#ffffff" />
+                  <rect x="24" y="4" width="12" height="3" fill="#ffffff" />
+
+                  {/* Centerline Dashes */}
                   <line
                     x1="-56"
                     y1="0"
                     x2="56"
                     y2="0"
-                    stroke="var(--primary)"
-                    strokeWidth="1.4"
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
                     strokeDasharray="6 5"
                   />
+
+                  {/* Green Threshold Light Bar & Red Stop Bar */}
+                  <line x1="-75" y1="-12" x2="-75" y2="12" stroke="#22c55e" strokeWidth="2.5" />
+                  <line x1="75" y1="-12" x2="75" y2="12" stroke="#ef4444" strokeWidth="2.5" />
+
+                  {/* PAPI Glideslope Indicator Lights (2 White / 2 Red = On 3.0° GS) */}
+                  <g transform="translate(-30, -16)">
+                    <circle cx="-6" cy="0" r="1.5" fill="#ffffff" />
+                    <circle cx="-2" cy="0" r="1.5" fill="#ffffff" />
+                    <circle cx="2" cy="0" r="1.5" fill="#ef4444" />
+                    <circle cx="6" cy="0" r="1.5" fill="#ef4444" />
+                  </g>
                 </g>
 
                 <path
@@ -1564,48 +1738,8 @@ export function HomepageAviationSequence({
           </svg>
         </div>
       </div>
-
-      {/* Interactive Avionics Mode Selector & Playback Controls Below Circle */}
-      <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
-        <div className="inline-flex items-center gap-1 rounded-full border border-border/80 bg-card/70 p-1 text-[11px] backdrop-blur-md">
-          <button
-            type="button"
-            onClick={() => setMode("pfd-hsi")}
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition ${
-              mode === "pfd-hsi"
-                ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Compass className="h-3 w-3" />
-            <span>PFD / HSI</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode("nav-radar")}
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition ${
-              mode === "nav-radar"
-                ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Radar className="h-3 w-3" />
-            <span>RNAV Radar</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setMode(" aerodynamics")}
-            className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-medium transition ${
-              mode === " aerodynamics"
-                ? "bg-primary text-primary-foreground font-semibold shadow-xs"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            <Gauge className="h-3 w-3" />
-            <span>Airfoil Polar</span>
-          </button>
-        </div>
-
+      {/* Playback Controls & Fast-Forward Action */}
+      <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
         {phase === "autoplay-blocked" && (
           <button
             type="button"
@@ -1623,10 +1757,10 @@ export function HomepageAviationSequence({
             type="button"
             onClick={handleSkip}
             aria-label="Skip takeoff sequence"
-            className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-card/75 px-3 py-1.5 text-[11px] font-medium text-muted-foreground shadow-xs backdrop-blur-md transition hover:border-primary/60 hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-full border border-primary/50 bg-primary/15 px-3.5 py-1.5 text-xs font-bold text-primary shadow-xs backdrop-blur-md transition hover:bg-primary hover:text-primary-foreground cursor-pointer"
           >
-            <SkipForward className="h-3 w-3" />
-            <span>Skip</span>
+            <SkipForward className="h-3.5 w-3.5" />
+            <span>Skip Takeoff (Fast-Forward)</span>
           </button>
         )}
 
@@ -1635,18 +1769,18 @@ export function HomepageAviationSequence({
             type="button"
             onClick={handleReplay}
             aria-label="Replay takeoff sequence"
-            className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-card/75 px-3 py-1.5 text-[11px] font-medium text-muted-foreground shadow-xs backdrop-blur-md transition hover:border-primary/60 hover:text-foreground"
+            className="inline-flex items-center gap-1.5 rounded-full border border-border/80 bg-card/85 px-3.5 py-1.5 text-xs font-semibold text-muted-foreground shadow-xs backdrop-blur-md transition hover:border-primary/60 hover:text-foreground cursor-pointer"
           >
-            <RotateCcw className="h-3 w-3" />
-            <span>Replay</span>
+            <RotateCcw className="h-3.5 w-3.5" />
+            <span>Replay Takeoff &amp; Approach</span>
           </button>
         )}
       </div>
 
       {/* Live Avionics Status Readout */}
-      <p className="mt-1.5 text-center font-mono text-[10px] tracking-wider text-muted-foreground/80">
-        <span ref={stageTextRef}>RNAV SID · SLVR1 ESTABLISHED</span> ·{" "}
-        <span>MOVE MOUSE TO STEER AIRCRAFT CONTROLLER</span>
+      <p className="mt-2 text-center font-mono text-[10px] tracking-wider text-muted-foreground/80">
+        <span ref={stageTextRef}>TERRAIN SYNTHETIC VISION · RWY 27L APPROACH</span> ·{" "}
+        <span>MOVE MOUSE TO STEER AIRCRAFT VECTOR</span>
       </p>
     </div>
   );

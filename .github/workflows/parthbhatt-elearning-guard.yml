@@ -1,0 +1,28 @@
+name: E-Learning Branch Guard (parthbhatt)
+
+on:
+  push:
+    branches:
+      - parthbhatt
+  pull_request:
+    branches:
+      - main
+    head:
+      - parthbhatt
+
+jobs:
+  verify-elearning-boundary:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enforce E-Learning Workspace Boundary
+        run: node scripts/elearning-sync.mjs --check

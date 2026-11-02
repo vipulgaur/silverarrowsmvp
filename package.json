@@ -5,7 +5,7 @@
   "sideEffects": false,
   "type": "module",
   "scripts": {
-    "dev": "vite dev --host 0.0.0.0 --port 3000",
+    "dev": "vite dev",
     "dev:local": "vite dev --config vite.local.ts --host 0.0.0.0 --port 8080",
     "build:local": "vite build --config vite.local.ts",
     "start": "node .output/server/index.mjs",
@@ -17,7 +17,10 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "elearning:status": "node scripts/elearning-sync.mjs --status",
+    "elearning:check": "node scripts/elearning-sync.mjs --check",
+    "elearning:pull": "node scripts/elearning-sync.mjs --pull"
   },
   "overrides": {
     "rolldown": "1.2.1"
@@ -63,6 +66,8 @@
     "date-fns": "^4.1.0",
     "embla-carousel-react": "^8.6.0",
     "input-otp": "^1.4.2",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.9",
     "katex": "^0.19.0",
     "lucide-react": "^0.575.0",
     "react": "^19.2.0",

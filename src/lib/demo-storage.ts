@@ -1,5 +1,6 @@
 import { seedData } from "./seed";
 import type { AppData, User } from "./types";
+import { ensureReaCollections } from "./rea-seed";
 
 export const DEMO_STORAGE_KEY = "silverarrows-demo-data-v1";
 export const DEMO_SESSION_KEY = "silverarrows-demo-me-v1";
@@ -87,19 +88,13 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
     const wasDeclinedLocally =
       withSeed.id !== "u-admin" &&
       (localUser.status === "deleted" || localUser.statusReason === "DECLINED_BY_ADMIN");
-    const wasApprovedLocally =
-      localUser.status === "active" &&
-      !localUser.statusReason &&
-      withSeed.statusReason === "PENDING_ADMIN_APPROVAL";
 
     return sanitizeUserRoleAndStatus({
       ...withSeed,
       status: wasDeclinedLocally ? "deleted" : withSeed.status,
       statusReason: wasDeclinedLocally
         ? localUser.statusReason || "DECLINED_BY_ADMIN"
-        : wasApprovedLocally
-          ? undefined
-          : withSeed.statusReason,
+        : withSeed.statusReason,
       deletedBy: wasDeclinedLocally ? localUser.deletedBy ?? withSeed.deletedBy : withSeed.deletedBy,
       deletedAt: wasDeclinedLocally ? localUser.deletedAt ?? withSeed.deletedAt : withSeed.deletedAt,
       computerNumber: u.computerNumber ?? localUser.computerNumber ?? withSeed.computerNumber,
@@ -148,19 +143,49 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
   }
   const users = Array.from(dedupedByEmail.values());
 
-  // Preserve canonical seed academy students & instructors if not yet in remote tables
+  // Preserve canonical seed academy students & instructors + locally registered pending users if not yet in remote tables
   const existingUserIds = new Set(users.map((u) => u.id));
   const existingEmails = new Set(users.map((u) => u.email.toLowerCase()));
   const missingSeedUsers = fallback.users.filter(
     (fu) => !existingUserIds.has(fu.id) && !existingEmails.has(fu.email.toLowerCase()),
   );
-  const completeUsers = [...users, ...missingSeedUsers].map(sanitizeUserRoleAndStatus);
+  const localPendingUsers = (localSnapshot?.users ?? []).filter(
+    (lu) =>
+      lu.status === "active" &&
+      lu.statusReason === "PENDING_ADMIN_APPROVAL" &&
+      !existingUserIds.has(lu.id) &&
+      !existingEmails.has(lu.email.toLowerCase()),
+  );
+  const completeUsers = [...users, ...missingSeedUsers, ...localPendingUsers].map(
+    sanitizeUserRoleAndStatus,
+  );
 
   // Preserve any pending local flights or documents not yet present in remote tables
   const remoteFlightIds = new Set(data.flights.map((f) => f.id));
   const localPendingFlights = (localSnapshot?.flights ?? []).filter(
     (f) => !remoteFlightIds.has(f.id) && f.verificationStatus === "pending",
   );
+
+  const localBookingById = new Map((localSnapshot?.bookings ?? []).map((b) => [b.id, b]));
+  const bookings = data.bookings.map((b) => {
+    const localB = localBookingById.get(b.id);
+    if (!localB) return b;
+    const isLocalFsmActive =
+      localB.status === "briefing" ||
+      localB.status === "flight" ||
+      localB.status === "landed" ||
+      localB.status === "debriefing";
+    return {
+      ...b,
+      status: b.status === "scheduled" && isLocalFsmActive ? localB.status : b.status,
+      briefingStartTime: b.briefingStartTime ?? localB.briefingStartTime,
+      offBlockTime: b.offBlockTime ?? localB.offBlockTime,
+      takeoffTime: b.takeoffTime ?? localB.takeoffTime,
+      landingTime: b.landingTime ?? localB.landingTime,
+      onBlockTime: b.onBlockTime ?? localB.onBlockTime,
+      debriefingEndTime: b.debriefingEndTime ?? localB.debriefingEndTime,
+    };
+  });
 
   const documents =
     data.documents && data.documents.length > 0
@@ -169,12 +194,14 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
         ? localSnapshot.documents
         : fallback.documents;
 
-  return {
+  return ensureReaCollections({
+    ...localSnapshot,
     ...data,
     users: completeUsers,
+    bookings,
     flights: [...localPendingFlights, ...data.flights],
     documents,
-  };
+  });
 }
 
 export function restoreDemoData(raw: string | null | undefined): AppData {
@@ -252,7 +279,8 @@ export function restoreDemoData(raw: string | null | undefined): AppData {
     );
     const completeUsers = [...normalizedUsers, ...missingSeed].map(sanitizeUserRoleAndStatus);
 
-    return {
+    return ensureReaCollections({
+      ...parsed,
       users: completeUsers,
       aircraft: Array.isArray(parsed.aircraft) ? parsed.aircraft : fallback.aircraft,
       maintenance: Array.isArray(parsed.maintenance) ? parsed.maintenance : fallback.maintenance,
@@ -277,7 +305,7 @@ export function restoreDemoData(raw: string | null | undefined): AppData {
         Array.isArray(parsed.documents) && parsed.documents.length > 0
           ? parsed.documents
           : fallback.documents,
-    };
+    });
   } catch {
     return fallback;
   }

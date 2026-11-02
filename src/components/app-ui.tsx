@@ -202,3 +202,7 @@ export function Stat({
     </div>
   );
 }
+
+export { Badge } from "@/components/ui/badge";
+export { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
+

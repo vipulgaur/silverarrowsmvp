@@ -54,6 +54,7 @@ import {
 } from "@/lib/logic";
 import { useStore } from "@/lib/store";
 import { roleLabel, type Booking } from "@/lib/types";
+import { downloadDifferenceReportPdf } from "@/lib/difference-report-pdf";
 
 export const Route = createFileRoute("/_shell")({
   component: ShellLayout,
@@ -381,6 +382,31 @@ function ShellLayout() {
       label: "Operations",
       items: [
         {
+          to: "/operations",
+          label: "Live Ops & Gantt",
+          icon: Compass,
+        },
+        {
+          to: "/cbta",
+          label: "CBTA Debrief & Logbook",
+          icon: FileCheck2,
+        },
+        {
+          to: "/invoicing",
+          label: "ACI GST Invoicing",
+          icon: ClipboardList,
+        },
+        {
+          to: "/sms",
+          label: "Safety SMS (5×5)",
+          icon: ShieldAlert,
+        },
+        {
+          to: "/my-hub",
+          label: "Global Pilot Hub (/my)",
+          icon: UserCheck,
+        },
+        {
           to: "/schedule",
           label: "Bookings calendar",
           icon: CalendarDays,
@@ -429,6 +455,10 @@ function ShellLayout() {
             icon: UserIcon,
             badge: cfiPendingCount,
           },
+          { to: "/operations", label: "Live Ops & Gantt", icon: Compass },
+          { to: "/cbta", label: "CBTA Debrief", icon: FileCheck2 },
+          { to: "/sms", label: "Safety SMS", icon: ShieldAlert },
+          { to: "/my-hub", label: "Pilot Hub (/my)", icon: UserCheck },
           { to: "/schedule", label: "Bookings calendar", icon: CalendarDays },
           { to: "/flights", label: "Flight log", icon: Notebook },
           { to: "/people", label: "People", icon: Users },
@@ -439,6 +469,9 @@ function ShellLayout() {
       : me.role === "ground"
         ? [
             { to: "/portal/ground", label: "Ground school", icon: School },
+            { to: "/cbta", label: "CBTA Analytics", icon: FileCheck2 },
+            { to: "/sms", label: "Safety SMS", icon: ShieldAlert },
+            { to: "/my-hub", label: "Pilot Hub (/my)", icon: UserCheck },
             { to: "/people", label: "People", icon: Users },
             { to: "/training", label: "Syllabus", icon: BookOpen },
             { to: "/learning", label: "E-Learning", icon: GraduationCap },
@@ -446,6 +479,11 @@ function ShellLayout() {
           ]
         : [
             { to: "/portal/student", label: "Student portal", icon: GraduationCap },
+            { to: "/operations", label: "Live Ops & W&B", icon: Compass },
+            { to: "/cbta", label: "CBTA & Logbook", icon: FileCheck2 },
+            { to: "/invoicing", label: "Invoices & Retainer", icon: ClipboardList },
+            { to: "/sms", label: "Safety SMS", icon: ShieldAlert },
+            { to: "/my-hub", label: "Pilot Hub (/my)", icon: UserCheck },
             { to: "/profile", label: "My profile", icon: UserCheck },
             { to: "/schedule", label: "Flight bookings", icon: CalendarDays },
             { to: "/flights", label: "Flight logs", icon: Notebook },
@@ -485,6 +523,18 @@ function ShellLayout() {
               className="lg:hidden rounded-full h-9 w-9"
             >
               {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => downloadDifferenceReportPdf()}
+              data-testid="shell-download-difference-report-pdf"
+              className="hidden sm:inline-flex items-center gap-1.5 rounded-full h-9 px-3 text-xs font-bold border-primary/40 text-primary hover:bg-primary hover:text-primary-foreground"
+              title="Download SilverArrows vs FlightLogger REA Architecture Difference Report (PDF)"
+            >
+              <Download className="h-3.5 w-3.5" />
+              <span>Diff Report PDF</span>
             </Button>
             <ThemeToggle />
 

@@ -41,6 +41,7 @@ export function LiveIstClock({ className, compact = false }: LiveIstClockProps) 
   return (
     <div
       data-testid="live-ist-clock"
+      suppressHydrationWarning
       onClick={() => void syncAuthoritativeNetworkTime()}
       title={`Authoritative IST Clock (Asia/Kolkata · UTC+05:30) · ${snap.source} · Click to re-verify network time`}
       className={cn(
@@ -61,11 +62,16 @@ export function LiveIstClock({ className, compact = false }: LiveIstClockProps) 
         <div className="flex items-center gap-1 font-medium text-foreground/90">
           <span
             data-testid="live-ist-day"
+            suppressHydrationWarning
             className="font-semibold text-primary dark:text-sky-400"
           >
             {compact ? snap.weekdayShort : snap.weekdayFull},
           </span>
-          <span data-testid="live-ist-date" className="font-mono text-[11px] sm:text-xs whitespace-nowrap">
+          <span
+            data-testid="live-ist-date"
+            suppressHydrationWarning
+            className="font-mono text-[11px] sm:text-xs whitespace-nowrap"
+          >
             {snap.dateLabel}
           </span>
         </div>
@@ -76,6 +82,7 @@ export function LiveIstClock({ className, compact = false }: LiveIstClockProps) 
         <div className="flex items-center gap-1.5">
           <span
             data-testid="live-ist-time-24h"
+            suppressHydrationWarning
             className="font-mono text-xs sm:text-sm font-extrabold tracking-wider text-foreground tabular-nums"
           >
             {snap.time24}

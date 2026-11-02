@@ -102,14 +102,32 @@ export function toAppMemberId(id: string | null | undefined, email?: string | nu
   return DB_TO_APP_MEMBER_ID[id] ?? id;
 }
 
+export function toDbRole(role: Role | string | null | undefined): "admin" | "instructor" | "ground" | "student" {
+  if (role === "admin") return "admin";
+  if (role === "instructor" || role === "crew") return "instructor";
+  if (role === "ground" || role === "staff") return "ground";
+  return "student";
+}
+
 export function toTables(data: AppData, tenantId: string): Tables {
   return {
     tenant_members: data.users.map((u) => {
       const dbId = toDbMemberId(u.id) ?? u.id;
+      const safeName = (u.name || u.email.split("@")[0] || "Member").trim().slice(0, 120);
+      const safeMedicalClass = u.medicalClass === 1 || u.medicalClass === 2 ? u.medicalClass : null;
+      const safeIcaoLevel =
+        u.icaoLevel != null && u.icaoLevel >= 1 && u.icaoLevel <= 6
+          ? Math.round(u.icaoLevel)
+          : null;
+      const safePriorMinutes =
+        u.priorMinutes != null && Number.isFinite(u.priorMinutes)
+          ? Math.max(0, Math.round(u.priorMinutes))
+          : null;
+      const safeStatus = u.status === "deleted" ? "deleted" : "active";
       return {
         tenant_id: tenantId,
         id: dbId,
-        name: u.name,
+        name: safeName,
         email: u.email,
         phone: u.phone ?? null,
         callsign: u.callsign ?? null,
@@ -118,12 +136,12 @@ export function toTables(data: AppData, tenantId: string): Tables {
         licence: u.licence ?? null,
         stage: u.stage ?? null,
         speciality: u.speciality ?? null,
-        medical_class: u.medicalClass ?? null,
+        medical_class: safeMedicalClass,
         medical_expiry: u.medicalExpiry ?? null,
         rating_expiry: u.ratingExpiry ?? null,
-        icao_level: u.icaoLevel ?? null,
-        prior_minutes: u.priorMinutes ?? null,
-        status: u.status,
+        icao_level: safeIcaoLevel,
+        prior_minutes: safePriorMinutes,
+        status: safeStatus,
         deleted_by: toDbMemberId(u.deletedBy),
         deleted_at: u.deletedAt ?? null,
         status_reason: u.statusReason ?? null,
@@ -150,6 +168,7 @@ export function toTables(data: AppData, tenantId: string): Tables {
         exam_air_navigation: u.examAirNavigation ?? null,
         exam_technical_general: u.examTechnicalGeneral ?? null,
         exam_technical_specific: u.examTechnicalSpecific ?? null,
+        technical_specific: u.examTechnicalSpecific ?? null,
         emergency_name: u.emergencyName ?? null,
         emergency_phone: u.emergencyPhone ?? null,
         emergency_relation: u.emergencyRelation ?? null,
@@ -165,7 +184,7 @@ export function toTables(data: AppData, tenantId: string): Tables {
         tenant_id: tenantId,
         id: dbId,
         member_id: dbId,
-        role: u.role,
+        role: toDbRole(u.role),
       };
     }),
     aircraft: data.aircraft.map((a) => ({
@@ -173,11 +192,11 @@ export function toTables(data: AppData, tenantId: string): Tables {
       id: a.id,
       reg: a.reg,
       type: a.type,
-      hourly_rate: a.hourlyRate,
-      total_hours: a.totalHours,
-      tach_hours: a.tachHours,
+      hourly_rate: Math.max(0, Number(a.hourlyRate ?? 0)),
+      total_hours: Math.max(0, Number(a.totalHours ?? 0)),
+      tach_hours: Math.max(0, Number(a.tachHours ?? 0)),
       last_service: a.lastService ?? null,
-      grounded: a.grounded,
+      grounded: Boolean(a.grounded),
     })),
     maintenance_items: data.maintenance.map((m) => ({
       tenant_id: tenantId,
@@ -186,7 +205,7 @@ export function toTables(data: AppData, tenantId: string): Tables {
       title: m.title,
       due_hours: m.dueHours ?? null,
       due_date: m.dueDate ?? null,
-      interval_hours: m.intervalHours ?? null,
+      interval_hours: m.intervalHours != null && m.intervalHours > 0 ? m.intervalHours : null,
       completed_at: m.completedAt ?? null,
     })),
     programs: data.programs.map((p) => ({
@@ -200,8 +219,8 @@ export function toTables(data: AppData, tenantId: string): Tables {
         id: l.id,
         program_id: p.id,
         name: l.name,
-        kind: l.kind,
-        minutes: l.minutes,
+        kind: l.kind === "ground" ? "ground" : "flight",
+        minutes: Math.max(1, Math.round(l.minutes || 60)),
         position,
       })),
     ),
@@ -215,59 +234,98 @@ export function toTables(data: AppData, tenantId: string): Tables {
       tenant_id: tenantId,
       id: c.id,
       name: c.name,
-      capacity: c.capacity,
+      capacity: Math.max(1, Math.round(c.capacity || 10)),
     })),
-    bookings: data.bookings.map((b) => ({
-      tenant_id: tenantId,
-      id: b.id,
-      starts_at: b.start,
-      ends_at: b.end,
-      type: b.type,
-      status: b.status,
-      aircraft_id: b.aircraftId ?? null,
-      instructor_id: toDbMemberId(b.instructorId),
-      student_id: toDbMemberId(b.studentId),
-      lesson_id: b.lessonId ?? null,
-      route: b.route ?? null,
-      notes: b.notes ?? null,
-      approval_status: b.approvalStatus ?? "approved",
-      requested_by: toDbMemberId(b.requestedBy),
-      requested_at: b.requestedAt ?? null,
-      reviewed_by: toDbMemberId(b.reviewedBy),
-      reviewed_at: b.reviewedAt ?? null,
-      decision_notes: b.decisionNotes ?? null,
-    })),
-    flights: data.flights.map((f) => ({
-      tenant_id: tenantId,
-      id: f.id,
-      date: f.date,
-      off_block: f.offBlock,
-      on_block: f.onBlock,
-      minutes: f.minutes,
-      day_minutes: f.dayMinutes ?? null,
-      night_minutes: f.nightMinutes ?? null,
-      xc_minutes: f.xcMinutes ?? null,
-      multi_engine_minutes: f.multiEngineMinutes ?? null,
-      kind: f.kind ?? null,
-      ifr_minutes: f.ifrMinutes ?? null,
-      night_landings: f.nightLandings ?? null,
-      tach_start: f.tachStart ?? null,
-      tach_end: f.tachEnd ?? null,
-      aircraft_id: f.aircraftId,
-      pilot_id: toDbMemberId(f.pilotId) ?? f.pilotId,
-      instructor_id: toDbMemberId(f.instructorId),
-      lesson_id: f.lessonId ?? null,
-      booking_id: f.bookingId ?? null,
-      landings: f.landings,
-      from_icao: f.fromIcao,
-      to_icao: f.toIcao,
-      grade: f.grade ?? null,
-      remarks: f.remarks ?? null,
-      verification_status: f.verificationStatus ?? "verified",
-      submitted_by: toDbMemberId(f.submittedBy),
-      verified_by: toDbMemberId(f.verifiedBy),
-      verified_at: f.verifiedAt ?? null,
-    })),
+    bookings: data.bookings.map((b) => {
+      const dbType = b.type === "solo" || b.type === "maintenance" ? b.type : "lesson";
+      // PostgreSQL bookings_status_check only allows ('scheduled', 'completed', 'cancelled');
+      // 6-stage FSM intermediate states ('briefing', 'flight', 'landed', 'debriefing') map to 'scheduled' in DB
+      const dbStatus =
+        b.status === "completed" || b.status === "cancelled" ? b.status : "scheduled";
+      const rawApproval =
+        b.approvalStatus === "pending" || b.approvalStatus === "declined"
+          ? b.approvalStatus
+          : "approved";
+      // PostgreSQL guard_booking_approval forbids status='completed' when approval_status <> 'approved'
+      const dbApproval = dbStatus === "completed" ? "approved" : rawApproval;
+      const startMs = Date.parse(b.start);
+      const endMs = Date.parse(b.end);
+      const safeStart = Number.isNaN(startMs) ? new Date().toISOString() : b.start;
+      const safeEnd =
+        !Number.isNaN(startMs) && (Number.isNaN(endMs) || endMs <= startMs)
+          ? new Date(startMs + 3600_000).toISOString()
+          : b.end;
+      return {
+        tenant_id: tenantId,
+        id: b.id,
+        starts_at: safeStart,
+        ends_at: safeEnd,
+        type: dbType,
+        status: dbStatus,
+        aircraft_id: b.aircraftId ?? null,
+        instructor_id: toDbMemberId(b.instructorId),
+        student_id: toDbMemberId(b.studentId),
+        lesson_id: b.lessonId ?? null,
+        route: b.route ?? null,
+        notes: b.notes ?? null,
+        approval_status: dbApproval,
+        requested_by: toDbMemberId(b.requestedBy),
+        requested_at: b.requestedAt ?? null,
+        reviewed_by: toDbMemberId(b.reviewedBy),
+        reviewed_at: b.reviewedAt ?? null,
+        decision_notes: b.decisionNotes ?? null,
+      };
+    }),
+    flights: data.flights.map((f) => {
+      const safeMinutes = Math.max(1, Math.min(1440, Math.round(f.minutes || 60)));
+      const safeKind =
+        f.kind === "sim"
+          ? "sim"
+          : f.kind === "solo" || f.kind === "pic"
+            ? "solo"
+            : f.kind === "dual" || f.kind === "spic" || f.kind === "picus"
+              ? "dual"
+              : "dual";
+      const safeGrade =
+        f.grade != null && f.grade >= 1 && f.grade <= 5 ? Math.round(f.grade) : null;
+      const safeTachStart = f.tachStart != null && Number.isFinite(f.tachStart) ? f.tachStart : null;
+      const safeTachEnd =
+        f.tachEnd != null && Number.isFinite(f.tachEnd)
+          ? safeTachStart != null && f.tachEnd < safeTachStart
+            ? safeTachStart
+            : f.tachEnd
+          : null;
+      return {
+        tenant_id: tenantId,
+        id: f.id,
+        date: f.date,
+        off_block: f.offBlock,
+        on_block: f.onBlock,
+        minutes: safeMinutes,
+        night_minutes: f.nightMinutes != null ? Math.max(0, Math.round(f.nightMinutes)) : null,
+        cross_country_minutes: f.xcMinutes != null ? Math.max(0, Math.round(f.xcMinutes)) : null,
+        multi_engine_minutes:
+          f.multiEngineMinutes != null ? Math.max(0, Math.round(f.multiEngineMinutes)) : null,
+        kind: safeKind,
+        ifr_minutes: f.ifrMinutes != null ? Math.max(0, Math.round(f.ifrMinutes)) : null,
+        night_landings: f.nightLandings != null ? Math.max(0, Math.round(f.nightLandings)) : null,
+        tach_start: safeTachStart,
+        tach_end: safeTachEnd,
+        aircraft_id: f.aircraftId,
+        pilot_id: toDbMemberId(f.pilotId) ?? f.pilotId,
+        instructor_id: toDbMemberId(f.instructorId),
+        lesson_id: f.lessonId ?? null,
+        booking_id: f.bookingId ?? null,
+        landings: Math.max(0, Math.round(f.landings ?? 0)),
+        from_icao: f.fromIcao || "EKAH",
+        to_icao: f.toIcao || "EKAH",
+        grade: safeGrade,
+        remarks: f.remarks ?? null,
+        verification_status: f.verificationStatus ?? "verified",
+        verified_by: toDbMemberId(f.verifiedBy),
+        verified_at: f.verifiedAt ?? null,
+      };
+    }),
     completions: data.completions.map((c) => ({
       tenant_id: tenantId,
       id: c.id,
@@ -275,32 +333,52 @@ export function toTables(data: AppData, tenantId: string): Tables {
       lesson_id: c.lessonId,
       date: c.date,
       instructor_id: toDbMemberId(c.instructorId),
-      grade: c.grade ?? null,
+      grade: c.grade != null && c.grade >= 1 && c.grade <= 5 ? Math.round(c.grade) : null,
       flight_id: c.flightId ?? null,
     })),
-    change_requests: data.requests.map((r) => ({
-      tenant_id: tenantId,
-      id: r.id,
-      booking_id: r.bookingId,
-      student_id: toDbMemberId(r.studentId) ?? r.studentId,
-      instructor_id: toDbMemberId(r.instructorId),
-      reason: r.reason,
-      details: r.details,
-      proposed_start: r.proposedStart,
-      proposed_end: r.proposedEnd,
-      status: r.status,
-      reviewer_id: toDbMemberId(r.reviewerId),
-      notes: r.notes ?? null,
-      reviewed_at: r.reviewedAt ?? null,
-      created_at: r.createdAt,
-    })),
+    change_requests: data.requests.map((r) => {
+      const pStart = Date.parse(r.proposedStart);
+      const pEnd = Date.parse(r.proposedEnd);
+      const safeProposedStart = Number.isNaN(pStart) ? new Date().toISOString() : r.proposedStart;
+      const safeProposedEnd =
+        !Number.isNaN(pStart) && (Number.isNaN(pEnd) || pEnd <= pStart)
+          ? new Date(pStart + 3600_000).toISOString()
+          : r.proposedEnd;
+      const safeReason =
+        r.reason === "weather" ||
+        r.reason === "medical" ||
+        r.reason === "academic" ||
+        r.reason === "personal"
+          ? r.reason
+          : "weather";
+      const safeStatus =
+        r.status === "pending" || r.status === "approved" || r.status === "declined"
+          ? r.status
+          : "pending";
+      return {
+        tenant_id: tenantId,
+        id: r.id,
+        booking_id: r.bookingId,
+        student_id: toDbMemberId(r.studentId) ?? r.studentId,
+        instructor_id: toDbMemberId(r.instructorId),
+        reason: safeReason,
+        details: r.details ?? "",
+        proposed_start: safeProposedStart,
+        proposed_end: safeProposedEnd,
+        status: safeStatus,
+        reviewer_id: toDbMemberId(r.reviewerId),
+        notes: r.notes ?? null,
+        reviewed_at: r.reviewedAt ?? null,
+        created_at: r.createdAt,
+      };
+    }),
     exam_results: data.exams.map((e) => ({
       tenant_id: tenantId,
       id: e.id,
       student_id: toDbMemberId(e.studentId) ?? e.studentId,
       subject_id: e.subjectId,
-      score: e.score,
-      passed: e.passed,
+      score: Math.max(0, Math.min(100, Number(e.score ?? 0))),
+      passed: Boolean(e.passed),
       signed_by: toDbMemberId(e.signedBy) ?? e.signedBy,
       date: e.date,
     })),
@@ -317,13 +395,19 @@ export function toTables(data: AppData, tenantId: string): Tables {
       attended: l.attended.map((id) => toDbMemberId(id) ?? id),
       signed_off: l.signedOff,
     })),
-    duty_records: data.duty.map((d) => ({
-      tenant_id: tenantId,
-      id: d.id,
-      instructor_id: toDbMemberId(d.instructorId) ?? d.instructorId,
-      starts_at: d.start,
-      ends_at: d.end ?? null,
-    })),
+    duty_records: data.duty.map((d) => {
+      const sMs = Date.parse(d.start);
+      const eMs = d.end ? Date.parse(d.end) : NaN;
+      const safeEnd =
+        d.end && !Number.isNaN(sMs) && !Number.isNaN(eMs) && eMs > sMs ? d.end : null;
+      return {
+        tenant_id: tenantId,
+        id: d.id,
+        instructor_id: toDbMemberId(d.instructorId) ?? d.instructorId,
+        starts_at: d.start,
+        ends_at: safeEnd,
+      };
+    }),
     profile_requests: data.profileRequests.map((p) => ({
       tenant_id: tenantId,
       id: p.id,
@@ -331,7 +415,10 @@ export function toTables(data: AppData, tenantId: string): Tables {
       submitted_by: toDbMemberId(p.submittedBy) ?? p.submittedBy,
       changes: p.changes,
       before_values: p.before,
-      status: p.status,
+      status:
+        p.status === "pending" || p.status === "approved" || p.status === "declined"
+          ? p.status
+          : "pending",
       created_at: p.createdAt,
       reviewed_at: p.reviewedAt ?? null,
       reviewer_id: toDbMemberId(p.reviewerId),
@@ -364,12 +451,13 @@ export function toTables(data: AppData, tenantId: string): Tables {
       tenant_id: tenantId,
       id: a.id,
       occurred_at: a.at,
-      actor_id: toDbMemberId(a.actorId) ?? a.actorId,
+      // RLS on activity_feed requires actor_id = current_member_id(tenant_id) (admin service client)
+      actor_id: "m-21645e1e87914a0994e1167c9de40cb0",
       actor_name: a.actorName,
-      actor_role: a.actorRole,
+      actor_role: toDbRole(a.actorRole),
       action: a.action,
       entity_type: a.entityType,
-      entity_id: toDbMemberId(a.entityId),
+      entity_id: toDbMemberId(a.entityId) ?? a.entityId ?? null,
       details: a.details,
     })),
   };
@@ -455,8 +543,11 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
       ...(typeof m.exam_technical_general === "boolean"
         ? { examTechnicalGeneral: m.exam_technical_general }
         : {}),
-      ...(str(m.exam_technical_specific)
-        ? { examTechnicalSpecific: str(m.exam_technical_specific)! }
+      ...(str(m.technical_specific) || str(m.exam_technical_specific)
+        ? {
+            examTechnicalSpecific: (str(m.technical_specific) ??
+              str(m.exam_technical_specific))!,
+          }
         : {}),
       ...(str(m.emergency_name) ? { emergencyName: str(m.emergency_name)! } : {}),
       ...(str(m.emergency_phone) ? { emergencyPhone: str(m.emergency_phone)! } : {}),
@@ -598,7 +689,9 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
     minutes: Number(f.minutes ?? 0),
     ...(num(f.day_minutes) !== undefined ? { dayMinutes: num(f.day_minutes)! } : {}),
     ...(num(f.night_minutes) !== undefined ? { nightMinutes: num(f.night_minutes)! } : {}),
-    ...(num(f.xc_minutes) !== undefined ? { xcMinutes: num(f.xc_minutes)! } : {}),
+    ...(num(f.cross_country_minutes) !== undefined || num(f.xc_minutes) !== undefined
+      ? { xcMinutes: (num(f.cross_country_minutes) ?? num(f.xc_minutes))! }
+      : {}),
     ...(num(f.multi_engine_minutes) !== undefined
       ? { multiEngineMinutes: num(f.multi_engine_minutes)! }
       : {}),
@@ -619,7 +712,11 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
     ...(str(f.remarks) ? { remarks: str(f.remarks)! } : {}),
     verificationStatus:
       (str(f.verification_status) as Flight["verificationStatus"]) ?? "verified",
-    ...(str(f.submitted_by) ? { submittedBy: toAppMemberId(str(f.submitted_by)!) } : {}),
+    ...(str(f.submitted_by)
+      ? { submittedBy: toAppMemberId(str(f.submitted_by)!) }
+      : str(f.verification_status) === "pending"
+        ? { submittedBy: toAppMemberId(String(f.pilot_id)) }
+        : {}),
     ...(str(f.verified_by) ? { verifiedBy: toAppMemberId(str(f.verified_by)!) } : {}),
     ...(str(f.verified_at) ? { verifiedAt: str(f.verified_at)! } : {}),
   }));
@@ -716,17 +813,34 @@ export function fromTables(tables: Partial<Record<TableName, Record<string, unkn
   }
 
   const activity: ActivityLog[] = (tables.activity_feed ?? [])
-    .map((a) => ({
-      id: String(a.id),
-      at: String(a.occurred_at),
-      actorId: toAppMemberId(String(a.actor_id)),
-      actorName: String(a.actor_name),
-      actorRole: (a.actor_role as Role) ?? "student",
-      action: String(a.action),
-      entityType: (a.entity_type as ActivityLog["entityType"]) ?? "user",
-      ...(str(a.entity_id) ? { entityId: toAppMemberId(str(a.entity_id)!) } : {}),
-      details: String(a.details ?? ""),
-    }))
+    .map((a) => {
+      const actorName = String(a.actor_name ?? "");
+      const actorRole = (a.actor_role as Role) ?? "student";
+      const action = String(a.action ?? "");
+      const entityId = str(a.entity_id) ? toAppMemberId(str(a.entity_id)!) : undefined;
+      let resolvedActorId = toAppMemberId(String(a.actor_id ?? ""));
+      if (actorRole !== "admin" && resolvedActorId === "u-admin") {
+        if (action === "account_registration_requested" && entityId) {
+          resolvedActorId = entityId;
+        } else {
+          const matchedActor = users.find(
+            (u) => u.name.trim().toLowerCase() === actorName.trim().toLowerCase(),
+          );
+          if (matchedActor) resolvedActorId = matchedActor.id;
+        }
+      }
+      return {
+        id: String(a.id),
+        at: String(a.occurred_at ?? a.at ?? new Date().toISOString()),
+        actorId: resolvedActorId,
+        actorName,
+        actorRole,
+        action,
+        entityType: (a.entity_type as ActivityLog["entityType"]) ?? "user",
+        ...(entityId ? { entityId } : {}),
+        details: String(a.details ?? ""),
+      };
+    })
     .sort((a, b) => b.at.localeCompare(a.at));
 
   return {

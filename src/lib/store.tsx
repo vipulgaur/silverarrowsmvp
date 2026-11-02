@@ -13,7 +13,12 @@ import type { ActivityLog, AppData, Booking, Flight, User } from "./types";
 import { seedData } from "./seed";
 import { uid } from "./logic";
 import { enrichWithSeedDefaults, readDemoData, writeDemoData } from "./demo-storage";
-import { getStoredDemoSession, isTestEnv, supabase } from "@/integrations/supabase/client";
+import {
+  findOrCreateLocalUser,
+  getStoredDemoSession,
+  isTestEnv,
+  supabase,
+} from "@/integrations/supabase/client";
 import { loadAcademy, persistBooking, pushChanges } from "./api/sync";
 import {
   fetchLocalSync,
@@ -84,6 +89,9 @@ function getCachedActiveSession(): { id: string; email: string } | null {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AppData>(() => {
+    if (!isTestEnv) {
+      return mergeCourseAssignments(seedData());
+    }
     const initial = readDemoData().data;
     const merged = mergeCourseAssignments(initial);
     writeStoredCourseAssignments(merged.activity);
@@ -91,6 +99,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   });
 
   const [meId, setMeId] = useState<string | null>(() => {
+    if (!isTestEnv) return null;
     const demoSession = getStoredDemoSession();
     if (demoSession?.user?.id) {
       return toAppMemberId(demoSession.user.id, demoSession.user.email);
@@ -104,7 +113,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const [noAccess, setNoAccess] = useState(false);
   const [hydrated, setHydrated] = useState<boolean>(() => {
-    // If local demo data and a known active user exist, start immediately hydrated to avoid screen flashing
+    if (!isTestEnv) return false;
     if (typeof window === "undefined") return false;
     const demoSession = getStoredDemoSession();
     const cached = getCachedActiveSession();
@@ -123,9 +132,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const merged = mergeCourseAssignments(next);
     writeStoredCourseAssignments(merged.activity);
     writeDemoData(merged);
-    if (!tenantIdRef.current) {
-      pushLocalSync(merged);
-    }
+    pushLocalSync(merged);
     latest.current = merged;
     setData(merged);
 
@@ -134,7 +141,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const diff = diffTables(baselineRef.current, nextTables);
       baselineRef.current = nextTables;
       if (hasChanges(diff)) {
-        void pushChanges(diff, tenantIdRef.current);
+        void pushChanges(diff, tenantIdRef.current).catch((err) => {
+          console.warn("Background sync warning:", err);
+        });
       }
     }
   }, []);
@@ -193,11 +202,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
               pendingDiff && hasChanges(pendingDiff)
                 ? mergePending(remoteTables, pendingDiff)
                 : remoteTables;
-            baselineRef.current = reconciledTables;
 
             const reconciledData = mergeCourseAssignments(
               enrichWithSeedDefaults(fromTables(reconciledTables), latest.current),
             );
+            baselineRef.current = toTables(reconciledData, loaded.tenantId);
             writeStoredCourseAssignments(reconciledData.activity);
             writeDemoData(reconciledData);
             latest.current = reconciledData;
@@ -227,11 +236,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         );
         const emailLower = (authUser.email ?? "").trim().toLowerCase();
         const canonicalId = toAppMemberId(authUser.id, emailLower);
-        const matchedUser =
+        let matchedUser =
           fallbackData.users.find((u) => u.id === canonicalId && u.status !== "deleted") ??
           fallbackData.users.find(
             (u) => u.email.trim().toLowerCase() === emailLower && u.status !== "deleted",
           );
+
+        // If authenticated user is not in the fallback roster yet, ensure their member profile exists locally
+        if (!matchedUser && authUser.email) {
+          matchedUser = findOrCreateLocalUser(authUser.email);
+          fallbackData.users = [
+            ...fallbackData.users.filter((u) => u.email.toLowerCase() !== emailLower),
+            matchedUser,
+          ];
+        }
 
         if (matchedUser) {
           writeDemoData(fallbackData);
@@ -254,14 +272,30 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       // Check if we already have an active known session in cache before dropping session
       const cached = getCachedActiveSession();
-      if (
-        cached?.id &&
-        latest.current.users.some((u) => u.id === cached.id && u.status !== "deleted")
-      ) {
-        setMeId(cached.id);
-        setNoAccess(false);
-        setHydrated(true);
-        return;
+      if (cached?.id) {
+        let existing = latest.current.users.find(
+          (u) =>
+            (u.id === cached.id ||
+              u.id === toAppMemberId(cached.id) ||
+              (cached.email && u.email.toLowerCase() === cached.email.toLowerCase())) &&
+            u.status !== "deleted",
+        );
+        if (!existing && cached.email) {
+          existing = findOrCreateLocalUser(cached.email);
+          const next = {
+            ...latest.current,
+            users: [...latest.current.users.filter((u) => u.id !== existing!.id), existing],
+          };
+          latest.current = next;
+          setData(next);
+          writeDemoData(next);
+        }
+        if (existing) {
+          setMeId(existing.id);
+          setNoAccess(false);
+          setHydrated(true);
+          return;
+        }
       }
 
       // Truly unauthenticated (e.g. fresh visitor on login page)
@@ -277,6 +311,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (!isTestEnv && typeof window !== "undefined") {
+      const localInitial = mergeCourseAssignments(readDemoData().data);
+      writeStoredCourseAssignments(localInitial.activity);
+      latest.current = localInitial;
+      setData(localInitial);
+      const demoSession = getStoredDemoSession();
+      const cached = getCachedActiveSession();
+      if (demoSession?.user?.id) {
+        setMeId(toAppMemberId(demoSession.user.id, demoSession.user.email));
+        setHydrated(true);
+      } else if (cached?.id) {
+        setMeId(cached.id);
+        setHydrated(true);
+      }
+    }
     void syncFromServerOrLocal();
 
     const sub = supabase.auth.onAuthStateChange((event, session) => {
@@ -305,15 +354,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
     const unsubLocalSync = initLocalSyncListener(
       (incoming) => {
-        // If connected to a live database tenant, PostgreSQL Realtime is authoritative
-        if (tenantIdRef.current) return;
+        if (tenantIdRef.current) {
+          void syncFromServerOrLocal();
+          return;
+        }
         const fresh = mergeCourseAssignments(incoming);
         writeDemoData(fresh);
         latest.current = fresh;
         setData(fresh);
       },
       () => {
-        if (tenantIdRef.current) return;
+        if (tenantIdRef.current) {
+          void syncFromServerOrLocal();
+          return;
+        }
         const fresh = mergeCourseAssignments(seedData());
         writeDemoData(fresh);
         latest.current = fresh;
@@ -329,6 +383,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   }, [syncFromServerOrLocal]);
 
   // Tenant-scoped Realtime subscription reconciling remote rows with unsaved local diffs
+  const realtimeDebounceRef = useRef<NodeJS.Timeout | null>(null);
   useEffect(() => {
     if (!activeTenantId) return;
     const channel = supabase
@@ -340,29 +395,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           schema: "public",
         },
         () => {
-          void syncFromServerOrLocal();
+          if (realtimeDebounceRef.current) {
+            clearTimeout(realtimeDebounceRef.current);
+          }
+          realtimeDebounceRef.current = setTimeout(() => {
+            void syncFromServerOrLocal();
+          }, 600);
         },
       )
       .subscribe();
 
-    // 15-second heartbeat interval keeps data fresh without hammering auth or dropping sessions
+    // 60-second passive fallback interval (only when tab is visible)
     const interval = setInterval(() => {
-      void syncFromServerOrLocal();
-    }, 15000);
-
-    const onVisibleOrFocus = () => {
-      if (document.visibilityState === "visible") {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
         void syncFromServerOrLocal();
       }
+    }, 60000);
+
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        if (realtimeDebounceRef.current) {
+          clearTimeout(realtimeDebounceRef.current);
+        }
+        realtimeDebounceRef.current = setTimeout(() => {
+          void syncFromServerOrLocal();
+        }, 1200);
+      }
     };
-    window.addEventListener("visibilitychange", onVisibleOrFocus);
-    window.addEventListener("focus", onVisibleOrFocus);
+    window.addEventListener("visibilitychange", onVisible);
 
     return () => {
       void supabase.removeChannel(channel);
       clearInterval(interval);
-      window.removeEventListener("visibilitychange", onVisibleOrFocus);
-      window.removeEventListener("focus", onVisibleOrFocus);
+      if (realtimeDebounceRef.current) {
+        clearTimeout(realtimeDebounceRef.current);
+      }
+      window.removeEventListener("visibilitychange", onVisible);
     };
   }, [activeTenantId, syncFromServerOrLocal]);
 
@@ -496,41 +564,69 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       baselineRef.current = toTables(next, tenantIdRef.current);
     }
     writeDemoData(next);
-    if (!tenantIdRef.current) {
-      pushLocalSync(next);
-    }
+    pushLocalSync(next);
     latest.current = next;
     setData(next);
   }, []);
 
-  const me = meId
-    ? (data.users.find(
-        (u) => (u.id === meId || u.id === toAppMemberId(meId)) && u.status !== "deleted",
-      ) ?? null)
-    : null;
+  const me = useMemo(() => {
+    if (!meId) return null;
+    const cleanId = meId.trim().toLowerCase();
+    const cached = getCachedActiveSession();
+    const cachedEmail = (cached?.email ?? "").trim().toLowerCase();
+
+    // 1. Direct ID match
+    let found = data.users.find((u) => u.id === meId && u.status !== "deleted");
+    if (found) return found;
+
+    // 2. Mapped App Member ID match
+    const appMappedId = toAppMemberId(meId);
+    found = data.users.find((u) => u.id === appMappedId && u.status !== "deleted");
+    if (found) return found;
+
+    // 3. Email match (either cleanId if it is an email or cachedEmail)
+    const searchEmail = cleanId.includes("@") ? cleanId : cachedEmail;
+    if (searchEmail) {
+      found = data.users.find(
+        (u) => u.email.trim().toLowerCase() === searchEmail && u.status !== "deleted",
+      );
+      if (found) return found;
+    }
+
+    // 4. Case-insensitive ID match
+    found = data.users.find((u) => u.id.toLowerCase() === cleanId && u.status !== "deleted");
+    if (found) return found;
+
+    // 5. Fallback user creation if active session is cached so me never drops to null during hydration
+    if (cached?.email) {
+      return findOrCreateLocalUser(cached.email);
+    }
+
+    return null;
+  }, [meId, data.users]);
+
+  const hasTrackedSessionRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!me) return;
-    const syncSessionToActivityTable = () => {
-      const { currentSession } = getUserLoginPrivacyHistory(me, latest.current.activity);
-      const entry = buildLoginSessionActivityEntry(currentSession);
-      const alreadyStored = latest.current.activity.some((a) => a.id === entry.id);
-      if (!alreadyStored) {
-        applyAndSync({
-          ...latest.current,
-          activity: [entry, ...latest.current.activity],
-        });
-      }
-    };
+    if (hasTrackedSessionRef.current === me.id) return;
+    hasTrackedSessionRef.current = me.id;
 
     recordUserLoginSession(me, "Active Portal Session", false);
-    syncSessionToActivityTable();
 
-    const unsub = subscribePrivacyTracker(() => {
-      syncSessionToActivityTable();
-    });
-    return unsub;
-  }, [me, applyAndSync]);
+    const { currentSession } = getUserLoginPrivacyHistory(me, latest.current.activity);
+    const entry = buildLoginSessionActivityEntry(currentSession);
+    const alreadyStored = latest.current.activity.some((a) => a.id === entry.id);
+    if (!alreadyStored) {
+      const next = {
+        ...latest.current,
+        activity: [entry, ...latest.current.activity],
+      };
+      latest.current = next;
+      setData(next);
+      writeDemoData(next);
+    }
+  }, [me?.id]);
 
   const log = useCallback(
     (action: string, entityType: ActivityLog["entityType"], details: string, entityId?: string) => {
@@ -572,6 +668,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       me,
       noAccess,
       signOut: async () => {
+        hasTrackedSessionRef.current = null;
         if (typeof window !== "undefined") {
           try {
             window.localStorage.removeItem(ACTIVE_USER_SESSION_KEY);

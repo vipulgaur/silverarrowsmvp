@@ -4,14 +4,37 @@ import type {
   Flight,
   MaintenanceItem,
   Aircraft,
+  AircraftModel,
+  AircraftRemark,
+  BookingConflict,
+  CbtaCompetencyCode,
+  ElectronicLogbookEntry,
+  FlightFsmState,
+  GradedCompetency,
+  Invoice,
+  LandingRecord,
   Role,
+  SmsLikelihood,
+  SmsReport,
+  SmsRiskZone,
+  SmsSeverity,
+  SoloEndorsement,
   User,
+  UserExercise,
+  UserLecture,
   ProfileChanges,
   StudentDocument,
   AppNotification,
   NotificationPriority,
+  BillingActivity,
 } from "./types";
 import { reasonLabel, roleLabel } from "./types";
+import {
+  DEFAULT_AIRCRAFT_MODELS,
+  DEFAULT_CORE_COMPETENCIES,
+  DEFAULT_MASTER_EXERCISES,
+  DEFAULT_PRICE_LIST_ITEMS,
+} from "./rea-seed";
 import { addDays, format, startOfDay, subMonths } from "date-fns";
 
 export const HOUR_PERIODS = [
@@ -920,39 +943,82 @@ export function validateAccountCreation(
 
 
 
+export function hasRole(user: Pick<User, "role" | "secondaryRoles">, target: Role): boolean {
+  return user.role === target || Boolean(user.secondaryRoles?.includes(target));
+}
+
 export const can = {
-  manageUsers: (r: Role) => r === "admin",
-  manageFleet: (r: Role) => r === "admin",
-  groundAircraft: (r: Role) => r === "admin" || r === "instructor",
-  managePrograms: (r: Role) => r === "admin",
+  manageUsers: (r: Role) => r === "admin" || r === "staff",
+  manageFleet: (r: Role) => r === "admin" || r === "staff",
+  groundAircraft: (r: Role) =>
+    r === "admin" || r === "staff" || r === "instructor" || r === "crew",
+  managePrograms: (r: Role) => r === "admin" || r === "staff",
   signOff: (r: Role) => r === "admin" || r === "instructor",
-  logFlight: (r: Role) => r === "admin" || r === "instructor",
-  manageLectures: (r: Role) => r === "admin" || r === "ground",
+  logFlight: (r: Role) => r === "admin" || r === "instructor" || r === "crew",
+  manageLectures: (r: Role) => r === "admin" || r === "staff" || r === "ground",
+  manageInvoicing: (r: Role) => r === "admin" || r === "staff",
   bookFor: (me: User, studentId?: string) =>
     me.role === "admin" ||
+    me.role === "staff" ||
     me.role === "instructor" ||
-    (me.role === "student" && studentId === me.id),
+    ((me.role === "student" || me.role === "renter" || me.role === "crew") &&
+      studentId === me.id),
   book: (r: Role) => r !== "ground",
 };
 
 export const homeFor: Record<Role, string> = {
   admin: "/portal/admin",
+  staff: "/operations",
   instructor: "/portal/cfi",
+  crew: "/operations",
   ground: "/portal/ground",
   student: "/portal/student",
+  renter: "/portal/student",
 };
 
 const access: Record<Role, string[]> = {
   admin: ["*"],
+  staff: [
+    "/dashboard",
+    "/learning",
+    "/profile",
+    "/portal/admin",
+    "/schedule",
+    "/operations",
+    "/cbta",
+    "/invoicing",
+    "/sms",
+    "/my-hub",
+    "/flights",
+    "/people",
+    "/training",
+    "/fleet",
+  ],
   instructor: [
     "/dashboard",
     "/learning",
     "/profile",
     "/portal/cfi",
     "/schedule",
+    "/operations",
+    "/cbta",
+    "/sms",
+    "/my-hub",
     "/flights",
     "/people",
     "/training",
+    "/fleet",
+  ],
+  crew: [
+    "/dashboard",
+    "/learning",
+    "/profile",
+    "/schedule",
+    "/operations",
+    "/cbta",
+    "/sms",
+    "/my-hub",
+    "/flights",
     "/fleet",
   ],
   ground: [
@@ -960,6 +1026,9 @@ const access: Record<Role, string[]> = {
     "/learning",
     "/profile",
     "/portal/ground",
+    "/cbta",
+    "/sms",
+    "/my-hub",
     "/people",
     "/training",
     "/fleet",
@@ -970,8 +1039,27 @@ const access: Record<Role, string[]> = {
     "/profile",
     "/portal/student",
     "/schedule",
+    "/operations",
+    "/cbta",
+    "/invoicing",
+    "/sms",
+    "/my-hub",
     "/flights",
     "/training",
+    "/fleet",
+    "/people/",
+  ],
+  renter: [
+    "/dashboard",
+    "/learning",
+    "/profile",
+    "/portal/student",
+    "/schedule",
+    "/operations",
+    "/invoicing",
+    "/sms",
+    "/my-hub",
+    "/flights",
     "/fleet",
     "/people/",
   ],
@@ -979,7 +1067,7 @@ const access: Record<Role, string[]> = {
 
 /** Route-level RBAC. "/people/" prefix grants detail pages only (students see their own). */
 export function canAccess(role: Role, path: string): boolean {
-  const allowed = access[role];
+  const allowed = access[role] ?? access.student;
   if (allowed.includes("*")) return true;
   return allowed.some((p) =>
     p.endsWith("/") ? path.startsWith(p) : path === p || path.startsWith(p + "/"),
@@ -994,9 +1082,9 @@ export function visibleTo<
     instructorId?: string | undefined;
   },
 >(me: User, items: T[]): T[] {
-  if (me.role === "admin") return items;
+  if (me.role === "admin" || me.role === "staff") return items;
   if (me.role === "instructor") {
-    return items.filter((i) => i.instructorId === me.id);
+    return items.filter((i) => i.instructorId === me.id || i.pilotId === me.id);
   }
   if (me.role === "ground") return [];
   return items.filter((i) => (i.pilotId ?? i.studentId) === me.id);
@@ -1960,4 +2048,1686 @@ export function pilotProficiencyBadges(
     rankTitle,
   };
 }
+
+// ============================================================================
+// FLIGHTLOGGER REA CORE ENGINES & STATE MACHINES (05_CORE_ENGINES_AND_STATE_MACHINES.md)
+// ============================================================================
+
+/**
+ * EASA Part-FTL Rolling Cumulative Ceilings & Mandatory 12-Hour Rest Calculator.
+ * Enforces:
+ * - Max 60 Duty Hours in any rolling 7 consecutive days
+ * - Max 190 Duty Hours in any rolling 28 consecutive days
+ * - Max 100 Flight Hours in any rolling 28 consecutive days
+ * - Max 900 Flight Hours in any calendar year
+ * - Max 1000 Flight Hours in any rolling 365 consecutive days
+ * - Mandatory 12-Hour Rest Period between consecutive duty periods
+ */
+export const EASA_FTL_LIMITS = {
+  duty7DaysHours: 60,
+  duty28DaysHours: 190,
+  flight28DaysHours: 100,
+  flightCalendarYearHours: 900,
+  flight365DaysHours: 1000,
+  minRestHours: 12,
+} as const;
+
+export interface RollingFtlReport {
+  instructorId: string;
+  duty7DaysHours: number;
+  duty28DaysHours: number;
+  flight28DaysHours: number;
+  flightCalendarYearHours: number;
+  flight365DaysHours: number;
+  mandatoryRestUntil?: string;
+  restLocked: boolean;
+  exceeded7DayDuty: boolean;
+  exceeded28DayDuty: boolean;
+  exceeded28DayFlight: boolean;
+  exceededCalendarYearFlight: boolean;
+  exceeded365DayFlight: boolean;
+  anyCeilingExceeded: boolean;
+}
+
+export function easaRollingFtlStatus(
+  instructorId: string,
+  data: AppData,
+  refTime = new Date(),
+): RollingFtlReport {
+  const refMs = refTime.getTime();
+  const ms7d = refMs - 7 * 86400000;
+  const ms28d = refMs - 28 * 86400000;
+  const ms365d = refMs - 365 * 86400000;
+  const currentYear = String(refTime.getUTCFullYear());
+
+  const cfiDuty = data.duty.filter((d) => d.instructorId === instructorId);
+  const cfiFlights = data.flights.filter(
+    (f) =>
+      (f.instructorId === instructorId || f.pilotId === instructorId) &&
+      isFlightVerified(f),
+  );
+
+  const dutyHoursInRange = (sinceMs: number) => {
+    let mins = 0;
+    for (const d of cfiDuty) {
+      const startMs = Date.parse(d.start);
+      if (Number.isNaN(startMs) || startMs > refMs) continue;
+      const endMs = d.end ? Date.parse(d.end) : refMs;
+      if (endMs < sinceMs) continue;
+      const clippedStart = Math.max(sinceMs, startMs);
+      const clippedEnd = Math.min(refMs, endMs);
+      if (clippedEnd > clippedStart) {
+        mins += (clippedEnd - clippedStart) / 60000;
+      }
+    }
+    return Math.round((mins / 60) * 10) / 10;
+  };
+
+  const flightHoursInRange = (sinceMs: number) => {
+    let mins = 0;
+    for (const f of cfiFlights) {
+      const fMs = Date.parse(`${f.date}T12:00:00.000Z`);
+      if (fMs >= sinceMs && fMs <= refMs) {
+        mins += f.minutes;
+      }
+    }
+    return Math.round((mins / 60) * 10) / 10;
+  };
+
+  const flightHoursInCalendarYear = () => {
+    let mins = 0;
+    for (const f of cfiFlights) {
+      if (f.date.startsWith(currentYear)) {
+        mins += f.minutes;
+      }
+    }
+    return Math.round((mins / 60) * 10) / 10;
+  };
+
+  // Find latest mandatoryRestUntil
+  let mandatoryRestUntil: string | undefined;
+  for (const d of cfiDuty) {
+    const restIso =
+      d.mandatoryRestUntil ??
+      (d.end
+        ? new Date(
+            Date.parse(d.end) +
+              Math.max(
+                EASA_FTL_LIMITS.minRestHours * 3600000,
+                Date.parse(d.end) - Date.parse(d.start),
+              ),
+          ).toISOString()
+        : undefined);
+    if (restIso && (!mandatoryRestUntil || restIso > mandatoryRestUntil)) {
+      mandatoryRestUntil = restIso;
+    }
+  }
+
+  const duty7DaysHours = dutyHoursInRange(ms7d);
+  const duty28DaysHours = dutyHoursInRange(ms28d);
+  const flight28DaysHours = flightHoursInRange(ms28d);
+  const flightCalendarYearHours = flightHoursInCalendarYear();
+  const flight365DaysHours = flightHoursInRange(ms365d);
+
+  const restLocked = Boolean(
+    mandatoryRestUntil && Date.parse(mandatoryRestUntil) > refMs,
+  );
+  const exceeded7DayDuty = duty7DaysHours > EASA_FTL_LIMITS.duty7DaysHours;
+  const exceeded28DayDuty = duty28DaysHours > EASA_FTL_LIMITS.duty28DaysHours;
+  const exceeded28DayFlight =
+    flight28DaysHours > EASA_FTL_LIMITS.flight28DaysHours;
+  const exceededCalendarYearFlight =
+    flightCalendarYearHours > EASA_FTL_LIMITS.flightCalendarYearHours;
+  const exceeded365DayFlight =
+    flight365DaysHours > EASA_FTL_LIMITS.flight365DaysHours;
+
+  return {
+    instructorId,
+    duty7DaysHours,
+    duty28DaysHours,
+    flight28DaysHours,
+    flightCalendarYearHours,
+    flight365DaysHours,
+    mandatoryRestUntil,
+    restLocked,
+    exceeded7DayDuty,
+    exceeded28DayDuty,
+    exceeded28DayFlight,
+    exceededCalendarYearFlight,
+    exceeded365DayFlight,
+    anyCeilingExceeded:
+      exceeded7DayDuty ||
+      exceeded28DayDuty ||
+      exceeded28DayFlight ||
+      exceededCalendarYearFlight ||
+      exceeded365DayFlight,
+  };
+}
+
+/**
+ * Engine 3: The 7-Point Pre-Flight Dispatch Gating Engine (05_CORE_ENGINES_AND_STATE_MACHINES.md)
+ * Evaluates all 7 aviation safety & regulatory gates prior to flight dispatch:
+ *  Gate 1: Crew Medical, License, Radio & ICAO ELP Validity at booking.end
+ *  Gate 2: EASA FCL.060 90-Day 3-Landing Currency (for solo/rental/charter)
+ *  Gate 3: Aircraft Model Class/Type Rating & Endorsements (MEP, Retractable, VP Prop)
+ *  Gate 4: Maintenance Hours-Remaining vs. Planned Flight Duration (blocks mid-flight overrun)
+ *  Gate 5: EASA Part-FTL Mandatory 12-Hour Rest Period Lock
+ *  Gate 6: EASA Part-FTL Rolling Cumulative Ceilings (7d/28d/365d)
+ *  Gate 7: Student Solo Endorsement Verification (within preceding 24h)
+ */
+export function evaluateDispatchGates(
+  candidate: Booking,
+  data: AppData,
+  now = new Date(),
+): {
+  passed: boolean;
+  blockingConflicts: BookingConflict[];
+  warnings: BookingConflict[];
+} {
+  const conflicts: BookingConflict[] = [];
+  const endDateStr = candidate.end.slice(0, 10);
+  const startMs = Date.parse(candidate.start);
+  const endMs = Date.parse(candidate.end);
+  const plannedHours =
+    Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs
+      ? Math.round(((endMs - startMs) / 3600000) * 100) / 100
+      : 1;
+
+  const existingOverrides = new Map(
+    (data.bookingConflicts ?? [])
+      .filter((c) => c.bookingId === candidate.id && c.overriddenBy)
+      .map((c) => [c.conflictType, c]),
+  );
+
+  const pushConflict = (
+    gateNumber: 1 | 2 | 3 | 4 | 5 | 6 | 7,
+    conflictType: BookingConflict["conflictType"],
+    severity: "blocking" | "warning",
+    message: string,
+  ) => {
+    const overridden = existingOverrides.get(conflictType);
+    conflicts.push({
+      id: overridden?.id ?? `conf-${candidate.id}-${conflictType}`,
+      bookingId: candidate.id,
+      gateNumber,
+      conflictType,
+      severity,
+      message,
+      overriddenBy: overridden?.overriddenBy,
+      overrideReason: overridden?.overrideReason,
+      overriddenAt: overridden?.overriddenAt,
+      resolved: Boolean(overridden?.overriddenBy),
+      detectedAt: now.toISOString(),
+    });
+  };
+
+  const student = data.users.find((u) => u.id === candidate.studentId);
+  const instructor = data.users.find((u) => u.id === candidate.instructorId);
+  const ac = data.aircraft.find((a) => a.id === candidate.aircraftId);
+  const models = data.aircraftModels ?? DEFAULT_AIRCRAFT_MODELS;
+  const acModel: AircraftModel | undefined =
+    models.find((m) => m.id === ac?.modelId) ??
+    (ac?.type.toLowerCase().includes("da42")
+      ? models.find((m) => m.id === "mdl-da42vi")
+      : models.find((m) => m.id === "mdl-c172s"));
+
+  const isSolo =
+    candidate.type === "solo" ||
+    candidate.type === "solo_training" ||
+    (!candidate.instructorId && candidate.type !== "maintenance");
+
+  // GATE 1: Crew Medical, License & Radio Validity at booking.end
+  for (const crew of [student, instructor].filter(Boolean) as User[]) {
+    if (crew.medicalExpiry && crew.medicalExpiry < endDateStr) {
+      pushConflict(
+        1,
+        "certificate_expired",
+        "blocking",
+        `Gate 1 [Medical Expired]: ${crew.name}'s Medical Certificate expired on ${crew.medicalExpiry} (before flight end ${endDateStr}).`,
+      );
+    }
+    if (isSolo && crew.id === student?.id) {
+      if (crew.splExpiry && crew.splExpiry < endDateStr) {
+        pushConflict(
+          1,
+          "certificate_expired",
+          "blocking",
+          `Gate 1 [SPL Expired]: ${crew.name}'s Student Pilot Licence expired on ${crew.splExpiry}.`,
+        );
+      }
+      if (crew.frtolExpiry && crew.frtolExpiry < endDateStr) {
+        pushConflict(
+          1,
+          "certificate_expired",
+          "blocking",
+          `Gate 1 [FRTOL Expired]: ${crew.name}'s Radio Telephone Permit expired on ${crew.frtolExpiry}.`,
+        );
+      }
+    }
+  }
+
+  // GATE 2: EASA FCL.060 90-Day 3-Landing Recency Currency
+  if ((isSolo || candidate.type === "rental" || candidate.type === "charter") && student) {
+    const hb = hoursBreakdown(student.id, data, new Date(candidate.start));
+    if (hb.landings90 < 3) {
+      pushConflict(
+        2,
+        "currency_90_day_lapsed",
+        candidate.type === "rental" || candidate.type === "charter" ? "blocking" : "warning",
+        `Gate 2 [90-Day Currency Lapsed]: ${student.name} has ${hb.landings90}/3 required takeoffs & landings in the preceding 90 days (EASA FCL.060).`,
+      );
+    }
+  }
+
+  // GATE 3: Aircraft Model Class/Type Rating Endorsement Check
+  if (acModel && student && isSolo) {
+    if (
+      acModel.classRating === "MEP_LAND" &&
+      !student.classRatings?.includes("MEP_LAND") &&
+      !student.licence?.toLowerCase().includes("mep")
+    ) {
+      pushConflict(
+        3,
+        "class_rating_missing",
+        "blocking",
+        `Gate 3 [Class Rating Missing]: ${student.name} does not hold a Multi-Engine Piston (MEP_LAND) endorsement for ${ac?.reg} (${acModel.modelName}).`,
+      );
+    }
+  }
+
+  // GATE 4: Maintenance Hours-Remaining vs. Planned Flight Duration
+  if (ac && candidate.type !== "maintenance") {
+    const openRemarks = (data.aircraftRemarks ?? []).filter(
+      (r) =>
+        r.aircraftId === ac.id &&
+        r.status === "open" &&
+        r.severity === "grounding_defect",
+    );
+    if (ac.grounded || openRemarks.length > 0) {
+      pushConflict(
+        4,
+        "maintenance_overdue",
+        "blocking",
+        `Gate 4 [Aircraft Grounded]: ${ac.reg} is currently grounded (${openRemarks[0]?.description ?? "AOG / Maintenance"}).`,
+      );
+    } else {
+      const remHours = hoursToService(ac, data.maintenance);
+      if (remHours !== null && remHours <= 0) {
+        pushConflict(
+          4,
+          "maintenance_overdue",
+          "blocking",
+          `Gate 4 [Maintenance Overdue]: ${ac.reg} has ${remHours}h remaining before mandatory inspection.`,
+        );
+      } else if (remHours !== null && remHours < plannedHours) {
+        pushConflict(
+          4,
+          "maintenance_flight_overrun",
+          "blocking",
+          `Gate 4 [Mid-Flight Maintenance Overrun]: Planned flight is ${plannedHours}h, but ${ac.reg} only has ${remHours}h left before inspection.`,
+        );
+      }
+    }
+  }
+
+  // GATE 5 & GATE 6: EASA Part-FTL Mandatory 12h Rest & Rolling Cumulative Ceilings
+  if (instructor && Number.isFinite(startMs)) {
+    const ftl = easaRollingFtlStatus(instructor.id, data, new Date(startMs));
+    if (
+      ftl.mandatoryRestUntil &&
+      Date.parse(ftl.mandatoryRestUntil) > startMs
+    ) {
+      pushConflict(
+        5,
+        "ftl_rest_violation",
+        "blocking",
+        `Gate 5 [EASA FTL 12h Rest Lock]: Instructor ${instructor.name} is in mandatory rest until ${ftl.mandatoryRestUntil.slice(0, 16).replace("T", " ")}.`,
+      );
+    }
+    if (ftl.duty7DaysHours + plannedHours > EASA_FTL_LIMITS.duty7DaysHours) {
+      pushConflict(
+        6,
+        "ftl_rolling_limit_exceeded",
+        "blocking",
+        `Gate 6 [EASA FTL 7-Day Duty Ceiling]: ${instructor.name} would reach ${(ftl.duty7DaysHours + plannedHours).toFixed(1)}h / ${EASA_FTL_LIMITS.duty7DaysHours}h max in 7 days.`,
+      );
+    } else if (
+      ftl.duty28DaysHours + plannedHours > EASA_FTL_LIMITS.duty28DaysHours ||
+      ftl.flight28DaysHours + plannedHours > EASA_FTL_LIMITS.flight28DaysHours ||
+      ftl.flight365DaysHours + plannedHours > EASA_FTL_LIMITS.flight365DaysHours
+    ) {
+      pushConflict(
+        6,
+        "ftl_rolling_limit_exceeded",
+        "blocking",
+        `Gate 6 [EASA FTL Rolling Ceiling]: ${instructor.name} exceeds 28-day (190h duty / 100h flight) or 365-day (1000h) FTL ceiling.`,
+      );
+    }
+  }
+
+  // GATE 7: Student Solo Endorsement Verification (within preceding 24 hours)
+  if (isSolo && student && candidate.type !== "rental" && candidate.type !== "charter") {
+    const validEndorsement = (data.soloEndorsements ?? []).find(
+      (se) =>
+        se.studentId === student.id &&
+        Date.parse(se.expiresAt) >= endMs &&
+        (!acModel || se.aircraftModelId === acModel.id),
+    );
+    if (!validEndorsement) {
+      pushConflict(
+        7,
+        "solo_endorsement_missing",
+        "blocking",
+        `Gate 7 [Solo Endorsement Required]: ${student.name} does not have an active 24-hour Instructor Solo Endorsement for ${acModel?.modelName ?? ac?.reg ?? "this aircraft"}.`,
+      );
+    }
+  }
+
+  const blockingConflicts = conflicts.filter(
+    (c) => c.severity === "blocking" && !c.overriddenBy,
+  );
+  const warnings = conflicts.filter(
+    (c) => c.severity === "warning" || Boolean(c.overriddenBy),
+  );
+
+  return {
+    passed: blockingConflicts.length === 0,
+    blockingConflicts,
+    warnings,
+  };
+}
+
+/**
+ * Accountable Manager / Operations Dispatcher Conflict Override (overrideBookingConflict).
+ */
+export function overrideBookingConflict(
+  data: AppData,
+  conflict: BookingConflict,
+  actor: User,
+  reason: string,
+  now = new Date(),
+): AppData | string {
+  if (actor.role !== "admin" && actor.role !== "staff") {
+    return "Only Administrators or Operations Dispatchers can override dispatch conflicts.";
+  }
+  if (!reason || reason.trim().length < 5) {
+    return "Provide a mandatory regulatory justification (at least 5 characters) to override a dispatch conflict.";
+  }
+  const updated: BookingConflict = {
+    ...conflict,
+    overriddenBy: actor.id,
+    overrideReason: reason.trim(),
+    overriddenAt: now.toISOString(),
+    resolved: true,
+  };
+  const existing = data.bookingConflicts ?? [];
+  const nextConflicts = existing.some((c) => c.id === updated.id)
+    ? existing.map((c) => (c.id === updated.id ? updated : c))
+    : [updated, ...existing];
+  return {
+    ...data,
+    bookingConflicts: nextConflicts,
+  };
+}
+
+/**
+ * Gate 7: Issue a 24-hour Instructor Digital Solo Endorsement (endorseSoloFlight).
+ */
+export function endorseSoloFlight(
+  data: AppData,
+  instructor: User,
+  payload: {
+    studentId: string;
+    aircraftModelId: string;
+    aerodromeIcao: string;
+    maxCrosswindKt: number;
+    maxWindKt: number;
+    minVisibilityMeters: number;
+    notes?: string;
+  },
+  now = new Date(),
+): AppData | string {
+  if (instructor.role !== "admin" && instructor.role !== "instructor") {
+    return "Only Flight Instructors (CFI) or Administrators can issue solo flight endorsements.";
+  }
+  const student = data.users.find((u) => u.id === payload.studentId);
+  if (!student) return "Student not found.";
+
+  const endorsement: SoloEndorsement = {
+    id: `solo-end-${uid()}`,
+    studentId: payload.studentId,
+    instructorId: instructor.id,
+    aircraftModelId: payload.aircraftModelId,
+    aerodromeIcao: payload.aerodromeIcao.trim().toUpperCase() || "VIDP",
+    maxCrosswindKt: payload.maxCrosswindKt,
+    maxWindKt: payload.maxWindKt,
+    minVisibilityMeters: payload.minVisibilityMeters,
+    issuedAt: now.toISOString(),
+    expiresAt: new Date(now.getTime() + 24 * 3600000).toISOString(),
+    signatureHash: `sha256:solo-${payload.studentId}-${instructor.id}-${now.getTime()}`,
+    notes: payload.notes?.trim(),
+  };
+
+  return {
+    ...data,
+    soloEndorsements: [endorsement, ...(data.soloEndorsements ?? [])],
+  };
+}
+
+/**
+ * Engine 1: The 6-Stage Flight Lifecycle Finite State Machine (FSM)
+ * Valid Transitions:
+ *   scheduled -> briefing | cancelled
+ *   briefing  -> flight   | cancelled
+ *   flight    -> landed   (CANNOT cancel an airborne flight!)
+ *   landed    -> debriefing
+ *   debriefing -> completed
+ */
+const VALID_FSM_TRANSITIONS: Record<FlightFsmState, FlightFsmState[]> = {
+  scheduled: ["briefing", "cancelled"],
+  briefing: ["flight", "cancelled"],
+  flight: ["landed"],
+  landed: ["debriefing"],
+  debriefing: ["completed"],
+  completed: [],
+  cancelled: [],
+};
+
+export function transitionFlightFsm(
+  data: AppData,
+  bookingId: string,
+  targetState: FlightFsmState,
+  actor: User,
+  timestamps?: {
+    offBlockTime?: string;
+    takeoffTime?: string;
+    landingTime?: string;
+    onBlockTime?: string;
+  },
+  now = new Date(),
+): AppData | string {
+  const booking = data.bookings.find((b) => b.id === bookingId);
+  if (!booking) return "Booking not found.";
+
+  const currentState: FlightFsmState = booking.status;
+  if (currentState === targetState) return data;
+
+  const allowedNext = VALID_FSM_TRANSITIONS[currentState] ?? [];
+  if (!allowedNext.includes(targetState)) {
+    if (currentState === "flight" && targetState === "cancelled") {
+      return "IllegalStateTransitionError: Cannot cancel an airborne flight. The aircraft must land first.";
+    }
+    return `IllegalStateTransitionError: Cannot transition directly from '${currentState}' to '${targetState}'. Allowed next states: ${allowedNext.join(", ") || "none"}.`;
+  }
+
+  // Pre-condition checks per stage
+  if (targetState === "briefing") {
+    if (booking.approvalStatus === "pending") {
+      return "Cannot start briefing: Student booking is still awaiting Administrator approval.";
+    }
+    const gateCheck = evaluateDispatchGates(booking, data, now);
+    const certBlocks = gateCheck.blockingConflicts.filter((c) => c.gateNumber === 1);
+    if (certBlocks.length > 0) {
+      return certBlocks[0]!.message;
+    }
+  }
+
+  if (targetState === "flight") {
+    const gateCheck = evaluateDispatchGates(booking, data, now);
+    if (!gateCheck.passed) {
+      return gateCheck.blockingConflicts[0]!.message;
+    }
+  }
+
+  if (targetState === "landed") {
+    const takeoffIso = timestamps?.takeoffTime ?? booking.takeoffTime ?? now.toISOString();
+    const landingIso = timestamps?.landingTime ?? now.toISOString();
+    if (Date.parse(landingIso) < Date.parse(takeoffIso)) {
+      return "Landing time cannot be earlier than takeoff time.";
+    }
+  }
+
+  const nowIso = now.toISOString();
+  const updatedBooking: Booking = {
+    ...booking,
+    status: targetState,
+    briefingStartTime:
+      targetState === "briefing" ? (booking.briefingStartTime ?? nowIso) : booking.briefingStartTime,
+    offBlockTime:
+      targetState === "flight"
+        ? (timestamps?.offBlockTime ?? booking.offBlockTime ?? nowIso)
+        : booking.offBlockTime,
+    takeoffTime:
+      targetState === "flight"
+        ? (timestamps?.takeoffTime ?? booking.takeoffTime ?? nowIso)
+        : booking.takeoffTime,
+    landingTime:
+      targetState === "landed"
+        ? (timestamps?.landingTime ?? booking.landingTime ?? nowIso)
+        : booking.landingTime,
+    onBlockTime:
+      targetState === "landed"
+        ? (timestamps?.onBlockTime ?? booking.onBlockTime ?? nowIso)
+        : booking.onBlockTime,
+    debriefingEndTime:
+      targetState === "completed"
+        ? (booking.debriefingEndTime ?? nowIso)
+        : booking.debriefingEndTime,
+  };
+
+  return {
+    ...data,
+    bookings: data.bookings.map((b) => (b.id === bookingId ? updatedBooking : b)),
+    activity: [
+      {
+        id: `act-fsm-${uid()}`,
+        at: nowIso,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        action: `flight_fsm_${targetState}`,
+        entityType: "booking",
+        entityId: booking.id,
+        details: `Transitioned flight ${booking.id} from [${currentState.toUpperCase()}] to [${targetState.toUpperCase()}]`,
+      },
+      ...data.activity,
+    ],
+  };
+}
+
+/**
+ * Live ADS-B Telemetry Auto-Touchdown Bridge (08_AGENT_SKILLS_AND_INTEGRATION_LINKS.md)
+ * When an airborne aircraft's groundspeed drops below 30 knots inside the arrival aerodrome geofence,
+ * automatically transitions the active flight from 'flight' to 'landed'.
+ */
+export function processAdsbTelemetryUpdate(
+  data: AppData,
+  aircraftReg: string,
+  groundSpeedKt: number,
+  inArrivalGeofence: boolean,
+  now = new Date(),
+): { data: AppData; autoLandedBookingId?: string } {
+  const ac = data.aircraft.find(
+    (a) => a.reg.toUpperCase() === aircraftReg.trim().toUpperCase(),
+  );
+  if (!ac) return { data };
+
+  const activeAirborne = data.bookings.find(
+    (b) => b.aircraftId === ac.id && b.status === "flight",
+  );
+  if (!activeAirborne) return { data };
+
+  if (groundSpeedKt < 30 && inArrivalGeofence) {
+    const adminOrCfi =
+      data.users.find((u) => u.id === activeAirborne.instructorId) ??
+      data.users.find((u) => u.role === "admin")!;
+    const next = transitionFlightFsm(
+      data,
+      activeAirborne.id,
+      "landed",
+      adminOrCfi,
+      { landingTime: now.toISOString(), onBlockTime: now.toISOString() },
+      now,
+    );
+    if (typeof next !== "string") {
+      return { data: next, autoLandedBookingId: activeAirborne.id };
+    }
+  }
+  return { data };
+}
+
+/**
+ * ICAO Doc 9859 5x5 Safety Risk Matrix Classifier
+ */
+export function classifySmsRisk(
+  severity: SmsSeverity,
+  likelihood: SmsLikelihood,
+): { riskIndex: string; riskZone: SmsRiskZone } {
+  const riskIndex = `${severity}${likelihood}`;
+  // High severity + high likelihood => RED (Unacceptable)
+  const likelihoodScore: Record<SmsLikelihood, number> = {
+    A: 1, // Extremely Improbable
+    B: 2, // Improbable
+    C: 3, // Remote
+    D: 4, // Occasional
+    E: 5, // Frequent
+  };
+  const product = severity * likelihoodScore[likelihood];
+  const riskZone: SmsRiskZone =
+    product >= 12 || (severity === 5 && likelihoodScore[likelihood] >= 2)
+      ? "RED"
+      : product >= 5
+        ? "AMBER"
+        : "GREEN";
+  return { riskIndex, riskZone };
+}
+
+/**
+ * Engine 2: The 6-Way Atomic Post-Flight Commit (fn_register_flight in 05_CORE_ENGINES_AND_STATE_MACHINES.md)
+ * Executes a single atomic commit across all 6 subsystems (rolling back completely if any invariant fails):
+ *   1. Fleet Tach/Hobbs/Airframe Hours + Landings + Fuel/Oil + Maintenance Auto-Grounding + Squawk Creation
+ *   2. Syllabus & CBTA 1-5 Norm Grading (master_exercises + 8 Core Competencies + repeat_required lock)
+ *   3. Dual Electronic Logbook Synthesis (Student row + Instructor row with SHA-256 signatureHash)
+ *   4. Crew Duty & EASA Part-FTL Auto Clock-Out + 12h mandatoryRestUntil Lock
+ *   5. Automated Customer Invoicing (ACI) + Indian GST (CGST/SGST) Ledger Charge
+ *   6. Safety Management System (SMS) Hazard Report Auto-Trigger
+ */
+export interface AtomicFlightRegistrationInput {
+  bookingId?: string;
+  studentId: string;
+  instructorId?: string;
+  aircraftId: string;
+  lessonId?: string;
+  date: string;
+  fromIcao: string;
+  toIcao: string;
+  offBlock: string;
+  takeoffTime?: string;
+  landingTime?: string;
+  onBlock: string;
+  tachStart: number;
+  tachEnd: number;
+  hobbsStart?: number;
+  hobbsEnd?: number;
+  fuelStartLiters?: number;
+  fuelAddedLiters?: number;
+  fuelStopLiters?: number;
+  oilAddedQuarts?: number;
+  dayFullStop: number;
+  dayTouchAndGo: number;
+  nightFullStop: number;
+  nightTouchAndGo: number;
+  approachesIls?: number;
+  approachesRnp?: number;
+  approachesVisual?: number;
+  ifrMinutes?: number;
+  nightMinutes?: number;
+  kind?: Flight["kind"];
+  exerciseGrades: Record<string, 1 | 2 | 3 | 4 | 5>;
+  competencyScores: Record<CbtaCompetencyCode, 1 | 2 | 3 | 4 | 5>;
+  observedIndicators?: string[];
+  remarks: string;
+  reportSquawk?: boolean;
+  squawkSeverity?: "info" | "warning" | "grounding_defect";
+  squawkDescription?: string;
+  flagSmsIncident?: boolean;
+  smsTitle?: string;
+  smsCategory?: SmsReport["category"];
+  smsSeverity?: SmsSeverity;
+  smsLikelihood?: SmsLikelihood;
+}
+
+export interface AtomicFlightCommitReceipt {
+  data: AppData;
+  flightId: string;
+  repeatRequired: boolean;
+  overallGrade: 1 | 2 | 3 | 4 | 5;
+  aircraftAutoGrounded: boolean;
+  studentLogbookEntryId: string;
+  instructorLogbookEntryId?: string;
+  billedTotalInr: number;
+  mandatoryRestUntil?: string;
+  spawnedSmsReportId?: string;
+}
+
+export function registerFlightAtomic(
+  data: AppData,
+  actor: User,
+  input: AtomicFlightRegistrationInput,
+  now = new Date(),
+): AtomicFlightCommitReceipt | string {
+  // 0. ACID Pre-Commit Invariant Validation (Full Rollback on Any Error)
+  const ac = data.aircraft.find((a) => a.id === input.aircraftId);
+  if (!ac) return "RollbackError: Selected aircraft does not exist.";
+  const student = data.users.find((u) => u.id === input.studentId);
+  if (!student) return "RollbackError: Selected student/pilot does not exist.";
+  const instructor = input.instructorId
+    ? data.users.find((u) => u.id === input.instructorId)
+    : undefined;
+
+  if (
+    !Number.isFinite(input.tachStart) ||
+    !Number.isFinite(input.tachEnd) ||
+    input.tachEnd <= input.tachStart
+  ) {
+    return `RollbackError [Tachometer Monotonicity Violation]: Tach Stop (${input.tachEnd}) must be strictly greater than Tach Start (${input.tachStart}).`;
+  }
+
+  const blockMins = blockMinutes(input.offBlock, input.onBlock);
+  if (blockMins <= 0 || blockMins > 720) {
+    return "RollbackError [Invalid Block Time]: Off-Block to On-Block duration must be between 1 and 720 minutes.";
+  }
+
+  const totalLandings =
+    (input.dayFullStop || 0) +
+    (input.dayTouchAndGo || 0) +
+    (input.nightFullStop || 0) +
+    (input.nightTouchAndGo || 0);
+  if (totalLandings < 1 && input.kind !== "sim") {
+    return "RollbackError: At least 1 landing must be recorded for an aircraft flight.";
+  }
+
+  const tachDeltaHours =
+    Math.round((input.tachEnd - input.tachStart) * 100) / 100;
+  const blockHours = Math.round((blockMins / 60) * 100) / 100;
+  const nowIso = now.toISOString();
+  const flightId = `fl-${uid()}`;
+
+  // -------------------------------------------------------------------------
+  // SUBSYSTEM 1: Fleet Tach/Engine Hours + Maintenance Decrement & Auto-Ground
+  // -------------------------------------------------------------------------
+  const newTotalHours = Math.round((ac.totalHours + tachDeltaHours) * 10) / 10;
+  const newTachHours = Math.round(input.tachEnd * 10) / 10;
+  const newHobbsHours =
+    input.hobbsEnd && input.hobbsEnd > (input.hobbsStart ?? 0)
+      ? Math.round(input.hobbsEnd * 10) / 10
+      : Math.round(((ac.hobbsHours ?? ac.tachHours) + blockHours) * 10) / 10;
+  const newAircraftLandings = (ac.totalLandings ?? 0) + totalLandings;
+
+  const criticalMxHitZero = data.maintenance.some(
+    (m) =>
+      m.aircraftId === ac.id &&
+      !m.completedAt &&
+      m.dueHours !== undefined &&
+      m.dueHours - newTotalHours <= 0,
+  );
+  const groundingSquawkReported =
+    Boolean(input.reportSquawk) && input.squawkSeverity === "grounding_defect";
+  const aircraftAutoGrounded = criticalMxHitZero || groundingSquawkReported;
+
+  const updatedAircraftList = data.aircraft.map((a) =>
+    a.id === ac.id
+      ? {
+          ...a,
+          totalHours: newTotalHours,
+          tachHours: newTachHours,
+          hobbsHours: newHobbsHours,
+          totalLandings: newAircraftLandings,
+          grounded: a.grounded || aircraftAutoGrounded,
+          status: groundingSquawkReported
+            ? ("grounded" as const)
+            : criticalMxHitZero
+              ? ("maintenance_due" as const)
+              : a.status,
+        }
+      : a,
+  );
+
+  const nextRemarks = [...(data.aircraftRemarks ?? [])];
+  if (input.reportSquawk && input.squawkDescription?.trim()) {
+    nextRemarks.unshift({
+      id: `sq-${uid()}`,
+      aircraftId: ac.id,
+      reportedBy: actor.id,
+      flightId,
+      reportedAt: nowIso,
+      severity: input.squawkSeverity ?? "warning",
+      status: "open",
+      description: input.squawkDescription.trim(),
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // SUBSYSTEM 2: CBTA 1-5 Norm Exercise & Competency Grading
+  // -------------------------------------------------------------------------
+  const competencyValues = Object.values(input.competencyScores);
+  const exerciseValues = Object.values(input.exerciseGrades);
+  const allScores = [...competencyValues, ...exerciseValues];
+  const minScore = allScores.length > 0 ? Math.min(...allScores) : 4;
+  const avgScore =
+    allScores.length > 0
+      ? Math.round(allScores.reduce((s, v) => s + v, 0) / allScores.length)
+      : 4;
+  const overallGrade = Math.min(5, Math.max(1, avgScore)) as 1 | 2 | 3 | 4 | 5;
+  const repeatRequired = minScore <= 2;
+
+  const userLectureId = `ul-${flightId}`;
+  const sigBase = `${flightId}:${student.id}:${instructor?.id ?? actor.id}:${nowIso}`;
+  const instructorSigHash = `sha256:cfi-${btoa(sigBase).slice(0, 24)}`;
+  const studentSigHash = `sha256:stu-${btoa(sigBase).slice(4, 28)}`;
+
+  const newUserLecture: UserLecture = {
+    id: userLectureId,
+    userProgramId: `up-${student.id}`,
+    studentId: student.id,
+    lessonId: input.lessonId ?? "l-1",
+    flightId,
+    instructorId: instructor?.id ?? actor.id,
+    attemptNumber:
+      (data.userLectures ?? []).filter(
+        (ul) => ul.studentId === student.id && ul.lessonId === input.lessonId,
+      ).length + 1,
+    status: repeatRequired ? "repeat_required" : "passed",
+    overallGrade,
+    debriefRemarks: input.remarks.trim(),
+    instructorSignatureHash: instructorSigHash,
+    studentSignatureHash: studentSigHash,
+    signedAt: nowIso,
+  };
+
+  const newExercises: UserExercise[] = Object.entries(input.exerciseGrades).map(
+    ([exId, grade]) => {
+      const exMeta = (data.masterExercises ?? DEFAULT_MASTER_EXERCISES).find(
+        (e) => e.id === exId || e.code === exId,
+      );
+      return {
+        id: `ue-${flightId}-${exId}`,
+        userLectureId,
+        flightId,
+        studentId: student.id,
+        exerciseId: exMeta?.id ?? exId,
+        exerciseCode: exMeta?.code ?? exId,
+        grade,
+        attemptCount: 1,
+        instructorRemark:
+          grade <= 2
+            ? "Below CBTA norm standard — requires repeat consolidation."
+            : "Satisfactory CBTA execution.",
+      };
+    },
+  );
+
+  const newCompetencies: GradedCompetency[] = (
+    Object.entries(input.competencyScores) as [CbtaCompetencyCode, 1 | 2 | 3 | 4 | 5][]
+  ).map(([code, score]) => {
+    const compMeta = (data.coreCompetencies ?? DEFAULT_CORE_COMPETENCIES).find(
+      (c) => c.code === code,
+    );
+    return {
+      id: `gc-${flightId}-${code}`,
+      userLectureId,
+      flightId,
+      studentId: student.id,
+      competencyId: compMeta?.id ?? `cbta-${code.toLowerCase()}`,
+      competencyCode: code,
+      score,
+      observedIndicators: input.observedIndicators ?? [],
+      debriefComment: input.remarks.trim(),
+    };
+  });
+
+  // Unlock next lesson in completions ONLY if !repeatRequired
+  const nextCompletions = [...data.completions];
+  if (input.lessonId && !repeatRequired) {
+    nextCompletions.push({
+      id: `c-${flightId}`,
+      studentId: student.id,
+      lessonId: input.lessonId,
+      date: input.date,
+      instructorId: instructor?.id ?? actor.id,
+      grade: overallGrade,
+      flightId,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // SUBSYSTEM 3: Dual Electronic Logbook Synthesis & Landings Table
+  // -------------------------------------------------------------------------
+  const nightLandings = (input.nightFullStop || 0) + (input.nightTouchAndGo || 0);
+  const dayLandings = (input.dayFullStop || 0) + (input.dayTouchAndGo || 0);
+  const nightMinutes = input.nightMinutes ?? (nightLandings > 0 ? Math.min(blockMins, nightLandings * 20) : 0);
+  const dayMinutes = Math.max(0, blockMins - nightMinutes);
+  const models = data.aircraftModels ?? DEFAULT_AIRCRAFT_MODELS;
+  const acModel = models.find((m) => m.id === ac.modelId);
+  const isMep = acModel?.classRating === "MEP_LAND";
+  const isSim = acModel?.classRating === "FNPT_II" || input.kind === "sim";
+  const flightKindResolved = input.kind ?? (instructor ? "dual" : "solo");
+
+  const newFlight: Flight = {
+    id: flightId,
+    bookingId: input.bookingId,
+    date: input.date,
+    offBlock: input.offBlock,
+    takeoffTime: input.takeoffTime,
+    landingTime: input.landingTime,
+    onBlock: input.onBlock,
+    aircraftId: ac.id,
+    pilotId: student.id,
+    instructorId: instructor?.id,
+    lessonId: input.lessonId,
+    kind: flightKindResolved,
+    minutes: blockMins,
+    dayMinutes,
+    nightMinutes,
+    ifrMinutes: input.ifrMinutes ?? 0,
+    multiEngineMinutes: isMep ? blockMins : 0,
+    landings: totalLandings,
+    dayFullStop: input.dayFullStop,
+    dayTouchAndGo: input.dayTouchAndGo,
+    nightFullStop: input.nightFullStop,
+    nightTouchAndGo: input.nightTouchAndGo,
+    nightLandings,
+    approachesIls: input.approachesIls ?? 0,
+    approachesRnp: input.approachesRnp ?? 0,
+    approachesVisual: input.approachesVisual ?? dayLandings,
+    fromIcao: input.fromIcao.toUpperCase(),
+    toIcao: input.toIcao.toUpperCase(),
+    tachStart: input.tachStart,
+    tachEnd: input.tachEnd,
+    hobbsStart: input.hobbsStart,
+    hobbsEnd: input.hobbsEnd,
+    fuelStartLiters: input.fuelStartLiters,
+    fuelAddedLiters: input.fuelAddedLiters,
+    fuelStopLiters: input.fuelStopLiters,
+    oilAddedQuarts: input.oilAddedQuarts,
+    grade: overallGrade,
+    repeatRequired,
+    remarks: input.remarks.trim(),
+    instructorSignedAt: nowIso,
+    studentSignedAt: nowIso,
+    signatureHash: instructorSigHash,
+    verificationStatus: "verified",
+    submittedBy: actor.id,
+    verifiedBy: instructor?.id ?? actor.id,
+    verifiedAt: nowIso,
+  };
+
+  const newLandingRecord: LandingRecord = {
+    id: `ldg-${flightId}`,
+    flightId,
+    pilotId: student.id,
+    date: input.date,
+    airportIcao: input.toIcao.toUpperCase() || "VIDP",
+    classRating: acModel?.classRating ?? "SEP_LAND",
+    dayFullStop: input.dayFullStop,
+    dayTouchAndGo: input.dayTouchAndGo,
+    nightFullStop: input.nightFullStop,
+    nightTouchAndGo: input.nightTouchAndGo,
+    approachesIls: input.approachesIls ?? 0,
+    approachesRnp: input.approachesRnp ?? 0,
+    approachesVisual: input.approachesVisual ?? dayLandings,
+  };
+
+  const studentLogbookEntry: ElectronicLogbookEntry = {
+    id: `elb-stu-${flightId}`,
+    userId: student.id,
+    flightId,
+    date: input.date,
+    aircraftReg: ac.reg,
+    aircraftModel: acModel?.modelName ?? ac.type,
+    classRating: acModel?.classRating ?? "SEP_LAND",
+    departureIcao: input.fromIcao.toUpperCase(),
+    arrivalIcao: input.toIcao.toUpperCase(),
+    offBlock: input.offBlock,
+    onBlock: input.onBlock,
+    roleCapacity:
+      flightKindResolved === "solo" || flightKindResolved === "pic"
+        ? "PIC"
+        : flightKindResolved === "spic"
+          ? "SPIC"
+          : "DUAL_STUDENT",
+    picName:
+      flightKindResolved === "solo" || flightKindResolved === "pic"
+        ? student.name
+        : (instructor?.name ?? student.name),
+    totalMinutes: blockMins,
+    seDayMinutes: !isMep && !isSim ? dayMinutes : 0,
+    seNightMinutes: !isMep && !isSim ? nightMinutes : 0,
+    meDayMinutes: isMep && !isSim ? dayMinutes : 0,
+    meNightMinutes: isMep && !isSim ? nightMinutes : 0,
+    ifrMinutes: input.ifrMinutes ?? 0,
+    simMinutes: isSim ? blockMins : 0,
+    picMinutes:
+      flightKindResolved === "solo" || flightKindResolved === "pic" ? blockMins : 0,
+    dualMinutes: flightKindResolved === "dual" ? blockMins : 0,
+    instructorMinutes: 0,
+    spicMinutes: flightKindResolved === "spic" ? blockMins : 0,
+    picusMinutes: flightKindResolved === "picus" ? blockMins : 0,
+    dayLandings,
+    nightLandings,
+    remarks: input.remarks.trim(),
+    signatureHash: studentSigHash,
+    signedByName: instructor?.name ?? student.name,
+    signedAt: nowIso,
+    isLocked: true,
+  };
+
+  const newLogbookEntries: ElectronicLogbookEntry[] = [studentLogbookEntry];
+  let instructorLogbookEntryId: string | undefined;
+
+  if (instructor) {
+    instructorLogbookEntryId = `elb-cfi-${flightId}`;
+    newLogbookEntries.push({
+      id: instructorLogbookEntryId,
+      userId: instructor.id,
+      flightId,
+      date: input.date,
+      aircraftReg: ac.reg,
+      aircraftModel: acModel?.modelName ?? ac.type,
+      classRating: acModel?.classRating ?? "SEP_LAND",
+      departureIcao: input.fromIcao.toUpperCase(),
+      arrivalIcao: input.toIcao.toUpperCase(),
+      offBlock: input.offBlock,
+      onBlock: input.onBlock,
+      roleCapacity: isSim ? "SIM_INSTRUCTOR" : "INSTRUCTOR",
+      picName: instructor.name,
+      totalMinutes: blockMins,
+      seDayMinutes: !isMep && !isSim ? dayMinutes : 0,
+      seNightMinutes: !isMep && !isSim ? nightMinutes : 0,
+      meDayMinutes: isMep && !isSim ? dayMinutes : 0,
+      meNightMinutes: isMep && !isSim ? nightMinutes : 0,
+      ifrMinutes: input.ifrMinutes ?? 0,
+      simMinutes: isSim ? blockMins : 0,
+      picMinutes: isSim ? 0 : blockMins,
+      dualMinutes: 0,
+      instructorMinutes: blockMins,
+      spicMinutes: 0,
+      picusMinutes: 0,
+      dayLandings,
+      nightLandings,
+      remarks: `Dual instruction for ${student.name}: ${input.remarks.trim()}`,
+      signatureHash: instructorSigHash,
+      signedByName: instructor.name,
+      signedAt: nowIso,
+      isLocked: true,
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // SUBSYSTEM 4: Crew Duty & EASA Part-FTL Mandatory 12h Rest Lock
+  // -------------------------------------------------------------------------
+  let mandatoryRestUntil: string | undefined;
+  let nextDuty = [...data.duty];
+  if (instructor) {
+    const dutyStartIso = `${input.date}T${input.offBlock}:00.000Z`;
+    const dutyEndIso = `${input.date}T${input.onBlock}:00.000Z`;
+    const dutyDurationMs = Math.max(blockMins * 60000, 2 * 3600000);
+    const restMs = Math.max(12 * 3600000, dutyDurationMs);
+    mandatoryRestUntil = new Date(now.getTime() + restMs).toISOString();
+
+    const openDuty = nextDuty.find((d) => d.instructorId === instructor.id && !d.end);
+    if (openDuty) {
+      nextDuty = nextDuty.map((d) =>
+        d.id === openDuty.id
+          ? {
+              ...d,
+              end: nowIso,
+              dutyType: "flight_duty",
+              fdpHours: blockHours,
+              mandatoryRestUntil,
+            }
+          : d,
+      );
+    } else {
+      nextDuty.unshift({
+        id: `d-${flightId}`,
+        instructorId: instructor.id,
+        start: Number.isNaN(Date.parse(dutyStartIso)) ? nowIso : dutyStartIso,
+        end: Number.isNaN(Date.parse(dutyEndIso)) ? nowIso : dutyEndIso,
+        dutyType: "flight_duty",
+        fdpHours: blockHours,
+        mandatoryRestUntil,
+      });
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // SUBSYSTEM 5: Automated Customer Invoicing (ACI) + Indian GST (CGST/SGST)
+  // -------------------------------------------------------------------------
+  const priceItems = data.priceListItems ?? DEFAULT_PRICE_LIST_ITEMS;
+  const acRateItem =
+    priceItems.find((p) => p.targetRefId === ac.modelId) ?? priceItems[0]!;
+  const cfiRateItem = priceItems.find((p) => p.itemType === "instructor_hour");
+  const landingRateItem = priceItems.find((p) => p.itemType === "landing_fee");
+
+  const customer =
+    (data.customers ?? []).find((c) => c.userId === student.id) ??
+    ({
+      id: `cust-${student.id}`,
+      userId: student.id,
+      customerNumber: `SA-CUST-${student.id.toUpperCase()}`,
+      billingName: student.name,
+      billingEmail: student.email,
+      billingAddress: student.address ?? "New Delhi",
+      stateCode: "07",
+      currency: "INR",
+      accountBalance: 200000,
+      creditLimit: 50000,
+      paymentTermsDays: 14,
+      autoBlockWhenOverLimit: true,
+    } satisfies import("./types").CustomerAccount);
+
+  const newActivities: BillingActivity[] = [];
+  const makeBillRow = (
+    itemType: BillingActivity["itemType"],
+    description: string,
+    sacCode: string,
+    qty: number,
+    unit: BillingActivity["unit"],
+    unitPrice: number,
+  ): BillingActivity => {
+    const subtotal = Math.round(qty * unitPrice * 100) / 100;
+    const cgst = Math.round(subtotal * 0.09 * 100) / 100;
+    const sgst = Math.round(subtotal * 0.09 * 100) / 100;
+    const total = Math.round((subtotal + cgst + sgst) * 100) / 100;
+    return {
+      id: `bill-${flightId}-${itemType}`,
+      customerId: customer.id,
+      userId: student.id,
+      flightId,
+      date: input.date,
+      itemType,
+      description,
+      sacCode,
+      quantity: qty,
+      unit,
+      unitPrice,
+      subtotalAmount: subtotal,
+      gstRatePercent: 18,
+      cgstAmount: cgst,
+      sgstAmount: sgst,
+      igstAmount: 0,
+      totalAmount: total,
+      status: "unbilled",
+    };
+  };
+
+  newActivities.push(
+    makeBillRow(
+      "aircraft_wet",
+      `${ac.reg} (${acModel?.modelName ?? ac.type}) Wet Block Time (${blockHours}h)`,
+      acRateItem?.sacCode ?? "999293",
+      blockHours,
+      "hours",
+      acRateItem?.unitPrice ?? 16500,
+    ),
+  );
+  if (instructor && cfiRateItem) {
+    newActivities.push(
+      makeBillRow(
+        "instructor_hour",
+        `CFI Dual Instruction & CBTA Debrief (${instructor.name} · ${blockHours}h)`,
+        cfiRateItem.sacCode,
+        blockHours,
+        "hours",
+        cfiRateItem.unitPrice,
+      ),
+    );
+  }
+  if (totalLandings > 0 && landingRateItem && !isSim) {
+    newActivities.push(
+      makeBillRow(
+        "landing_fee",
+        `${input.toIcao.toUpperCase()} Aerodrome Touchdown Charges (${totalLandings}x)`,
+        landingRateItem.sacCode,
+        totalLandings,
+        "landings",
+        landingRateItem.unitPrice,
+      ),
+    );
+  }
+
+  const billedTotalInr = newActivities.reduce((s, a) => s + a.totalAmount, 0);
+  const existingCustomers = data.customers ?? [];
+  const nextCustomers = existingCustomers.some((c) => c.id === customer.id)
+    ? existingCustomers.map((c) =>
+        c.id === customer.id
+          ? { ...c, accountBalance: Math.round((c.accountBalance - billedTotalInr) * 100) / 100 }
+          : c,
+      )
+    : [
+        {
+          ...customer,
+          accountBalance: Math.round((customer.accountBalance - billedTotalInr) * 100) / 100,
+        },
+        ...existingCustomers,
+      ];
+
+  // -------------------------------------------------------------------------
+  // SUBSYSTEM 6: Safety Management System (SMS) Hazard Auto-Trigger
+  // -------------------------------------------------------------------------
+  let spawnedSmsReportId: string | undefined;
+  const nextSmsReports = [...(data.smsReports ?? [])];
+  if (input.flagSmsIncident) {
+    spawnedSmsReportId = `sms-${flightId}`;
+    const sev = input.smsSeverity ?? 3;
+    const lik = input.smsLikelihood ?? "C";
+    const { riskIndex, riskZone } = classifySmsRisk(sev, lik);
+    nextSmsReports.unshift({
+      id: spawnedSmsReportId,
+      reportNumber: `SMS-2026-${String(nextSmsReports.length + 43).padStart(3, "0")}`,
+      reportedBy: actor.id,
+      flightId,
+      aircraftId: ac.id,
+      occurredAt: nowIso,
+      title:
+        input.smsTitle?.trim() ||
+        `Post-Flight Debrief Safety Occurrence — ${ac.reg} (${input.fromIcao}→${input.toIcao})`,
+      category: input.smsCategory ?? "human_factors",
+      description: input.remarks.trim(),
+      severity: sev,
+      likelihood: lik,
+      riskIndex,
+      riskZone,
+      isConfidential: false,
+      status: "submitted",
+    });
+  }
+
+  // Update linked booking status to 'completed'
+  const nextBookings = input.bookingId
+    ? data.bookings.map((b) =>
+        b.id === input.bookingId
+          ? {
+              ...b,
+              status: "completed" as const,
+              debriefingEndTime: nowIso,
+            }
+          : b,
+      )
+    : data.bookings;
+
+  const nextData: AppData = {
+    ...data,
+    aircraft: updatedAircraftList,
+    aircraftRemarks: nextRemarks,
+    bookings: nextBookings,
+    flights: [newFlight, ...data.flights],
+    completions: nextCompletions,
+    duty: nextDuty,
+    userLectures: [newUserLecture, ...(data.userLectures ?? [])],
+    userExercises: [...newExercises, ...(data.userExercises ?? [])],
+    gradedCompetencies: [...newCompetencies, ...(data.gradedCompetencies ?? [])],
+    landingsLog: [newLandingRecord, ...(data.landingsLog ?? [])],
+    electronicLogbookEntries: [
+      ...newLogbookEntries,
+      ...(data.electronicLogbookEntries ?? []),
+    ],
+    customers: nextCustomers,
+    billingActivities: [...newActivities, ...(data.billingActivities ?? [])],
+    smsReports: nextSmsReports,
+    activity: [
+      {
+        id: `act-reg-${flightId}`,
+        at: nowIso,
+        actorId: actor.id,
+        actorName: actor.name,
+        actorRole: actor.role,
+        action: "fn_register_flight_atomic",
+        entityType: "flight",
+        entityId: flightId,
+        details: `6-Way Atomic Commit [${ac.reg} · ${student.name}]: +${tachDeltaHours}h Tach, CBTA Grade ${overallGrade}/5 (${repeatRequired ? "REPEAT REQUIRED" : "PASSED"}), Dual Logbook Signed, ACI Charged INR ${billedTotalInr.toLocaleString()}`,
+      },
+      ...data.activity,
+    ],
+  };
+
+  return {
+    data: nextData,
+    flightId,
+    repeatRequired,
+    overallGrade,
+    aircraftAutoGrounded,
+    studentLogbookEntryId: studentLogbookEntry.id,
+    instructorLogbookEntryId,
+    billedTotalInr,
+    mandatoryRestUntil,
+    spawnedSmsReportId,
+  };
+}
+
+/**
+ * CBTA 8-Axis Spider Radar Chart & Bottleneck Analytics (04 & 11 .md)
+ */
+export interface CbtaRadarAxisPoint {
+  code: CbtaCompetencyCode;
+  name: string;
+  studentAverage: number;
+  academyTarget: number;
+  safetyFloor: number;
+  sampleCount: number;
+}
+
+export function studentCbtaRadarProfile(
+  studentId: string,
+  data: AppData,
+): {
+  axes: CbtaRadarAxisPoint[];
+  overallAverage: number;
+  repeatLecturesCount: number;
+  passedLecturesCount: number;
+} {
+  const competencies = data.coreCompetencies ?? DEFAULT_CORE_COMPETENCIES;
+  const graded = (data.gradedCompetencies ?? []).filter(
+    (gc) => gc.studentId === studentId,
+  );
+  const lectures = (data.userLectures ?? []).filter(
+    (ul) => ul.studentId === studentId,
+  );
+
+  const axes: CbtaRadarAxisPoint[] = competencies.map((comp) => {
+    const scores = graded
+      .filter((g) => g.competencyCode === comp.code)
+      .map((g) => g.score);
+    const avg =
+      scores.length > 0
+        ? Math.round((scores.reduce((s, v) => s + v, 0) / scores.length) * 10) / 10
+        : 3.8;
+    return {
+      code: comp.code,
+      name: comp.name,
+      studentAverage: avg,
+      academyTarget: 4.0,
+      safetyFloor: comp.minAcceptableScore,
+      sampleCount: scores.length,
+    };
+  });
+
+  const overallAverage =
+    axes.length > 0
+      ? Math.round(
+          (axes.reduce((s, a) => s + a.studentAverage, 0) / axes.length) * 10,
+        ) / 10
+      : 4.0;
+
+  return {
+    axes,
+    overallAverage,
+    repeatLecturesCount: lectures.filter((l) => l.status === "repeat_required").length,
+    passedLecturesCount: lectures.filter((l) => l.status === "passed").length,
+  };
+}
+
+/**
+ * CAMO Aircraft Squawk Reporting, MEL Deferral & CRS Sign-Off (02 & 05 .md)
+ */
+export function reportAircraftRemark(
+  data: AppData,
+  actor: User,
+  payload: {
+    aircraftId: string;
+    severity: AircraftRemark["severity"];
+    description: string;
+  },
+  now = new Date(),
+): AppData | string {
+  const ac = data.aircraft.find((a) => a.id === payload.aircraftId);
+  if (!ac) return "Aircraft not found.";
+  if (!payload.description.trim()) return "Enter a squawk / defect description.";
+
+  const remark: AircraftRemark = {
+    id: `sq-${uid()}`,
+    aircraftId: ac.id,
+    reportedBy: actor.id,
+    reportedAt: now.toISOString(),
+    severity: payload.severity,
+    status: "open",
+    description: payload.description.trim(),
+  };
+
+  const shouldGround = payload.severity === "grounding_defect";
+  return {
+    ...data,
+    aircraft: data.aircraft.map((a) =>
+      a.id === ac.id && shouldGround
+        ? { ...a, grounded: true, status: "grounded" as const }
+        : a,
+    ),
+    aircraftRemarks: [remark, ...(data.aircraftRemarks ?? [])],
+  };
+}
+
+export function resolveAircraftRemark(
+  data: AppData,
+  remarkId: string,
+  actor: User,
+  payload: {
+    rectifiedByLicense: string;
+    rectificationNotes: string;
+    workOrderRef?: string;
+  },
+  now = new Date(),
+): AppData | string {
+  if (actor.role !== "admin" && actor.role !== "staff" && actor.role !== "instructor") {
+    return "Only authorized CAMO / Admin personnel can issue a Certificate of Release to Service (CRS).";
+  }
+  if (!payload.rectifiedByLicense.trim()) {
+    return "Enter the certifying CAMO / AME Engineer License Number for CRS sign-off.";
+  }
+  const target = (data.aircraftRemarks ?? []).find((r) => r.id === remarkId);
+  if (!target) return "Aircraft remark not found.";
+
+  const nextRemarks = (data.aircraftRemarks ?? []).map((r) =>
+    r.id === remarkId
+      ? {
+          ...r,
+          status: "rectified" as const,
+          rectifiedBy: actor.id,
+          rectifiedByLicense: payload.rectifiedByLicense.trim(),
+          rectificationNotes: payload.rectificationNotes.trim(),
+          workOrderRef: payload.workOrderRef?.trim() || `WO-CRS-${uid().toUpperCase()}`,
+          rectifiedAt: now.toISOString(),
+        }
+      : r,
+  );
+
+  const remainingGrounding = nextRemarks.some(
+    (r) =>
+      r.aircraftId === target.aircraftId &&
+      r.status === "open" &&
+      r.severity === "grounding_defect",
+  );
+
+  return {
+    ...data,
+    aircraftRemarks: nextRemarks,
+    aircraft: data.aircraft.map((a) =>
+      a.id === target.aircraftId && !remainingGrounding
+        ? { ...a, grounded: false, status: "available" as const }
+        : a,
+    ),
+  };
+}
+
+/**
+ * Automated Customer Invoicing (ACI): Bundle unbilled activities into an Indian GST Invoice
+ */
+export function generateInvoiceFromUnbilled(
+  data: AppData,
+  customerId: string,
+  actor: User,
+  now = new Date(),
+): { data: AppData; invoice: Invoice } | string {
+  if (!can.manageInvoicing(actor.role)) {
+    return "Only Administrators or Operations Staff can generate customer invoices.";
+  }
+  const customer = (data.customers ?? []).find((c) => c.id === customerId);
+  if (!customer) return "Customer account not found.";
+
+  const unbilled = (data.billingActivities ?? []).filter(
+    (a) => a.customerId === customerId && a.status === "unbilled",
+  );
+  if (unbilled.length === 0) {
+    return "No unbilled flight activities found for this customer.";
+  }
+
+  const invoiceId = `inv-${uid()}`;
+  const existingInvoices = data.invoices ?? [];
+  const invoiceNumber = `SA-INV-2026-${String(existingInvoices.length + 2).padStart(3, "0")}`;
+  const issueDate = now.toISOString().slice(0, 10);
+  const dueDate = new Date(
+    now.getTime() + customer.paymentTermsDays * 86400000,
+  )
+    .toISOString()
+    .slice(0, 10);
+
+  const items = unbilled.map((act) => ({
+    id: `invi-${act.id}`,
+    activityId: act.id,
+    description: act.description,
+    sacCode: act.sacCode,
+    quantity: act.quantity,
+    unitPrice: act.unitPrice,
+    subtotalAmount: act.subtotalAmount,
+    cgstAmount: act.cgstAmount,
+    sgstAmount: act.sgstAmount,
+    igstAmount: act.igstAmount,
+    totalAmount: act.totalAmount,
+  }));
+
+  const subtotalAmount =
+    Math.round(items.reduce((s, i) => s + i.subtotalAmount, 0) * 100) / 100;
+  const cgstTotal =
+    Math.round(items.reduce((s, i) => s + i.cgstAmount, 0) * 100) / 100;
+  const sgstTotal =
+    Math.round(items.reduce((s, i) => s + i.sgstAmount, 0) * 100) / 100;
+  const igstTotal =
+    Math.round(items.reduce((s, i) => s + i.igstAmount, 0) * 100) / 100;
+  const taxTotal = Math.round((cgstTotal + sgstTotal + igstTotal) * 100) / 100;
+  const grandTotal = Math.round((subtotalAmount + taxTotal) * 100) / 100;
+
+  const invoice: Invoice = {
+    id: invoiceId,
+    invoiceNumber,
+    customerId: customer.id,
+    userId: customer.userId,
+    issueDate,
+    dueDate,
+    currency: customer.currency,
+    subtotalAmount,
+    cgstTotal,
+    sgstTotal,
+    igstTotal,
+    taxTotal,
+    grandTotal,
+    status: "issued",
+    items,
+  };
+
+  return {
+    invoice,
+    data: {
+      ...data,
+      billingActivities: (data.billingActivities ?? []).map((a) =>
+        a.customerId === customerId && a.status === "unbilled"
+          ? { ...a, status: "invoiced" as const, invoiceId }
+          : a,
+      ),
+      invoices: [invoice, ...existingInvoices],
+    },
+  };
+}
+
+/**
+ * Interactive Weight & Balance (Mass & Balance) Envelope & Runway Performance Calculator
+ */
+export interface WeightBalanceLoadInput {
+  model: AircraftModel;
+  frontSeatsKg: number;
+  rearSeatsKg: number;
+  baggageKg: number;
+  takeoffFuelLiters: number;
+  tripFuelBurnLiters: number;
+}
+
+export interface WeightBalanceComputation {
+  emptyWeightKg: number;
+  zeroFuelWeightKg: number;
+  zeroFuelCgMm: number;
+  takeoffWeightKg: number;
+  takeoffCgMm: number;
+  landingWeightKg: number;
+  landingCgMm: number;
+  withinMaxWeight: boolean;
+  withinCgEnvelope: boolean;
+  safeToDispatch: boolean;
+}
+
+export function calculateWeightAndBalance(
+  input: WeightBalanceLoadInput,
+): WeightBalanceComputation {
+  const { model } = input;
+  const specificGravity = model.engineType === "DIESEL_JET_A1" ? 0.8 : 0.72;
+  const takeoffFuelKg = Math.round(input.takeoffFuelLiters * specificGravity * 10) / 10;
+  const tripBurnKg =
+    Math.round(
+      Math.min(input.takeoffFuelLiters, input.tripFuelBurnLiters) * specificGravity * 10,
+    ) / 10;
+  const landingFuelKg = Math.max(0, takeoffFuelKg - tripBurnKg);
+
+  const zfwKg =
+    model.emptyWeightKg + input.frontSeatsKg + input.rearSeatsKg + input.baggageKg;
+  const zfwMoment =
+    model.emptyWeightKg * model.emptyCgArmMm +
+    input.frontSeatsKg * model.frontSeatArmMm +
+    input.rearSeatsKg * model.rearSeatArmMm +
+    input.baggageKg * model.baggageArmMm;
+  const zfwCgMm = Math.round(zfwMoment / Math.max(1, zfwKg));
+
+  const towKg = Math.round((zfwKg + takeoffFuelKg) * 10) / 10;
+  const towMoment = zfwMoment + takeoffFuelKg * model.fuelArmMm;
+  const towCgMm = Math.round(towMoment / Math.max(1, towKg));
+
+  const ldwKg = Math.round((zfwKg + landingFuelKg) * 10) / 10;
+  const ldwMoment = zfwMoment + landingFuelKg * model.fuelArmMm;
+  const ldwCgMm = Math.round(ldwMoment / Math.max(1, ldwKg));
+
+  const arms = model.cgEnvelopePolygon.map((p) => p.armMm);
+  const minArm = Math.min(...arms);
+  const maxArm = Math.max(...arms);
+
+  const withinMaxWeight =
+    towKg <= model.maxTakeoffWeightKg && ldwKg <= model.maxLandingWeightKg;
+  const withinCgEnvelope =
+    towCgMm >= minArm &&
+    towCgMm <= maxArm &&
+    ldwCgMm >= minArm &&
+    ldwCgMm <= maxArm;
+
+  return {
+    emptyWeightKg: model.emptyWeightKg,
+    zeroFuelWeightKg: Math.round(zfwKg * 10) / 10,
+    zeroFuelCgMm: zfwCgMm,
+    takeoffWeightKg: towKg,
+    takeoffCgMm: towCgMm,
+    landingWeightKg: ldwKg,
+    landingCgMm: ldwCgMm,
+    withinMaxWeight,
+    withinCgEnvelope,
+    safeToDispatch: withinMaxWeight && withinCgEnvelope,
+  };
+}
+
+export function calculateRunwayPerformance(params: {
+  elevationFt: number;
+  qnhHpa: number;
+  oatC: number;
+  runwayHeadingDeg: number;
+  windDirDeg: number;
+  windSpeedKt: number;
+  model: AircraftModel;
+}) {
+  const pressureAltitudeFt = Math.round(
+    params.elevationFt + (1013.25 - params.qnhHpa) * 30,
+  );
+  const isaTempC = 15 - (pressureAltitudeFt / 1000) * 2;
+  const densityAltitudeFt = Math.round(
+    pressureAltitudeFt + 120 * (params.oatC - isaTempC),
+  );
+  const angleRad =
+    ((params.windDirDeg - params.runwayHeadingDeg) * Math.PI) / 180;
+  const headwindKt = Math.round(params.windSpeedKt * Math.cos(angleRad) * 10) / 10;
+  const crosswindKt =
+    Math.round(Math.abs(params.windSpeedKt * Math.sin(angleRad)) * 10) / 10;
+
+  const daFactor = Math.max(1, 1 + Math.max(0, densityAltitudeFt) / 8000);
+  const windFactor = headwindKt >= 0 ? Math.max(0.75, 1 - headwindKt / 45) : 1 + Math.abs(headwindKt) / 20;
+  const todrMeters = Math.round(
+    params.model.todrBaselineMeters * daFactor * windFactor * 1.25,
+  );
+  const ldrMeters = Math.round(
+    params.model.ldrBaselineMeters * daFactor * windFactor * 1.43,
+  );
+
+  return {
+    pressureAltitudeFt,
+    densityAltitudeFt,
+    headwindKt,
+    crosswindKt,
+    exceedsMaxCrosswind: crosswindKt > params.model.maxCrosswindKt,
+    todrMeters,
+    ldrMeters,
+  };
+}
+
 

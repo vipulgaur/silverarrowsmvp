@@ -14,12 +14,17 @@ import { Route as ShellRouteImport } from './routes/_shell'
 import { Route as ElearningRouteImport } from './routes/elearning'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ShellAtlasRouteImport } from './routes/_shell.atlas'
+import { Route as ShellCbtaRouteImport } from './routes/_shell.cbta'
 import { Route as ShellDashboardRouteImport } from './routes/_shell.dashboard'
 import { Route as ShellDatabaseRouteImport } from './routes/_shell.database'
 import { Route as ShellFleetRouteImport } from './routes/_shell.fleet'
 import { Route as ShellFlightsRouteImport } from './routes/_shell.flights'
+import { Route as ShellInvoicingRouteImport } from './routes/_shell.invoicing'
+import { Route as ShellMyHubRouteImport } from './routes/_shell.my-hub'
+import { Route as ShellOperationsRouteImport } from './routes/_shell.operations'
 import { Route as ShellProfileRouteImport } from './routes/_shell.profile'
 import { Route as ShellScheduleRouteImport } from './routes/_shell.schedule'
+import { Route as ShellSmsRouteImport } from './routes/_shell.sms'
 import { Route as ShellTrainingRouteImport } from './routes/_shell.training'
 import { Route as ShellAdminApprovalsRouteImport } from './routes/_shell.admin.approvals'
 import { Route as ShellAdminAuditRouteImport } from './routes/_shell.admin.audit'
@@ -57,6 +62,11 @@ const ShellAtlasRoute = ShellAtlasRouteImport.update({
   path: '/atlas',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellCbtaRoute = ShellCbtaRouteImport.update({
+  id: '/cbta',
+  path: '/cbta',
+  getParentRoute: () => ShellRoute,
+} as any)
 const ShellDashboardRoute = ShellDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -77,6 +87,21 @@ const ShellFlightsRoute = ShellFlightsRouteImport.update({
   path: '/flights',
   getParentRoute: () => ShellRoute,
 } as any)
+const ShellInvoicingRoute = ShellInvoicingRouteImport.update({
+  id: '/invoicing',
+  path: '/invoicing',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellMyHubRoute = ShellMyHubRouteImport.update({
+  id: '/my-hub',
+  path: '/my-hub',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellOperationsRoute = ShellOperationsRouteImport.update({
+  id: '/operations',
+  path: '/operations',
+  getParentRoute: () => ShellRoute,
+} as any)
 const ShellProfileRoute = ShellProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -85,6 +110,11 @@ const ShellProfileRoute = ShellProfileRouteImport.update({
 const ShellScheduleRoute = ShellScheduleRouteImport.update({
   id: '/schedule',
   path: '/schedule',
+  getParentRoute: () => ShellRoute,
+} as any)
+const ShellSmsRoute = ShellSmsRouteImport.update({
+  id: '/sms',
+  path: '/sms',
   getParentRoute: () => ShellRoute,
 } as any)
 const ShellTrainingRoute = ShellTrainingRouteImport.update({
@@ -153,12 +183,17 @@ export interface FileRoutesByFullPath {
   '/elearning': typeof ElearningRoute
   '/login': typeof LoginRoute
   '/atlas': typeof ShellAtlasRoute
+  '/cbta': typeof ShellCbtaRoute
   '/dashboard': typeof ShellDashboardRoute
   '/database': typeof ShellDatabaseRoute
   '/fleet': typeof ShellFleetRoute
   '/flights': typeof ShellFlightsRoute
+  '/invoicing': typeof ShellInvoicingRoute
+  '/my-hub': typeof ShellMyHubRoute
+  '/operations': typeof ShellOperationsRoute
   '/profile': typeof ShellProfileRoute
   '/schedule': typeof ShellScheduleRoute
+  '/sms': typeof ShellSmsRoute
   '/training': typeof ShellTrainingRoute
   '/admin/approvals': typeof ShellAdminApprovalsRoute
   '/admin/audit': typeof ShellAdminAuditRoute
@@ -177,12 +212,17 @@ export interface FileRoutesByTo {
   '/elearning': typeof ElearningRoute
   '/login': typeof LoginRoute
   '/atlas': typeof ShellAtlasRoute
+  '/cbta': typeof ShellCbtaRoute
   '/dashboard': typeof ShellDashboardRoute
   '/database': typeof ShellDatabaseRoute
   '/fleet': typeof ShellFleetRoute
   '/flights': typeof ShellFlightsRoute
+  '/invoicing': typeof ShellInvoicingRoute
+  '/my-hub': typeof ShellMyHubRoute
+  '/operations': typeof ShellOperationsRoute
   '/profile': typeof ShellProfileRoute
   '/schedule': typeof ShellScheduleRoute
+  '/sms': typeof ShellSmsRoute
   '/training': typeof ShellTrainingRoute
   '/admin/approvals': typeof ShellAdminApprovalsRoute
   '/admin/audit': typeof ShellAdminAuditRoute
@@ -203,12 +243,17 @@ export interface FileRoutesById {
   '/elearning': typeof ElearningRoute
   '/login': typeof LoginRoute
   '/_shell/atlas': typeof ShellAtlasRoute
+  '/_shell/cbta': typeof ShellCbtaRoute
   '/_shell/dashboard': typeof ShellDashboardRoute
   '/_shell/database': typeof ShellDatabaseRoute
   '/_shell/fleet': typeof ShellFleetRoute
   '/_shell/flights': typeof ShellFlightsRoute
+  '/_shell/invoicing': typeof ShellInvoicingRoute
+  '/_shell/my-hub': typeof ShellMyHubRoute
+  '/_shell/operations': typeof ShellOperationsRoute
   '/_shell/profile': typeof ShellProfileRoute
   '/_shell/schedule': typeof ShellScheduleRoute
+  '/_shell/sms': typeof ShellSmsRoute
   '/_shell/training': typeof ShellTrainingRoute
   '/_shell/admin/approvals': typeof ShellAdminApprovalsRoute
   '/_shell/admin/audit': typeof ShellAdminAuditRoute
@@ -229,12 +274,17 @@ export interface FileRouteTypes {
     | '/elearning'
     | '/login'
     | '/atlas'
+    | '/cbta'
     | '/dashboard'
     | '/database'
     | '/fleet'
     | '/flights'
+    | '/invoicing'
+    | '/my-hub'
+    | '/operations'
     | '/profile'
     | '/schedule'
+    | '/sms'
     | '/training'
     | '/admin/approvals'
     | '/admin/audit'
@@ -253,12 +303,17 @@ export interface FileRouteTypes {
     | '/elearning'
     | '/login'
     | '/atlas'
+    | '/cbta'
     | '/dashboard'
     | '/database'
     | '/fleet'
     | '/flights'
+    | '/invoicing'
+    | '/my-hub'
+    | '/operations'
     | '/profile'
     | '/schedule'
+    | '/sms'
     | '/training'
     | '/admin/approvals'
     | '/admin/audit'
@@ -278,12 +333,17 @@ export interface FileRouteTypes {
     | '/elearning'
     | '/login'
     | '/_shell/atlas'
+    | '/_shell/cbta'
     | '/_shell/dashboard'
     | '/_shell/database'
     | '/_shell/fleet'
     | '/_shell/flights'
+    | '/_shell/invoicing'
+    | '/_shell/my-hub'
+    | '/_shell/operations'
     | '/_shell/profile'
     | '/_shell/schedule'
+    | '/_shell/sms'
     | '/_shell/training'
     | '/_shell/admin/approvals'
     | '/_shell/admin/audit'
@@ -342,6 +402,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellAtlasRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/cbta': {
+      id: '/_shell/cbta'
+      path: '/cbta'
+      fullPath: '/cbta'
+      preLoaderRoute: typeof ShellCbtaRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/_shell/dashboard': {
       id: '/_shell/dashboard'
       path: '/dashboard'
@@ -370,6 +437,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ShellFlightsRouteImport
       parentRoute: typeof ShellRoute
     }
+    '/_shell/invoicing': {
+      id: '/_shell/invoicing'
+      path: '/invoicing'
+      fullPath: '/invoicing'
+      preLoaderRoute: typeof ShellInvoicingRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/my-hub': {
+      id: '/_shell/my-hub'
+      path: '/my-hub'
+      fullPath: '/my-hub'
+      preLoaderRoute: typeof ShellMyHubRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/operations': {
+      id: '/_shell/operations'
+      path: '/operations'
+      fullPath: '/operations'
+      preLoaderRoute: typeof ShellOperationsRouteImport
+      parentRoute: typeof ShellRoute
+    }
     '/_shell/profile': {
       id: '/_shell/profile'
       path: '/profile'
@@ -382,6 +470,13 @@ declare module '@tanstack/react-router' {
       path: '/schedule'
       fullPath: '/schedule'
       preLoaderRoute: typeof ShellScheduleRouteImport
+      parentRoute: typeof ShellRoute
+    }
+    '/_shell/sms': {
+      id: '/_shell/sms'
+      path: '/sms'
+      fullPath: '/sms'
+      preLoaderRoute: typeof ShellSmsRouteImport
       parentRoute: typeof ShellRoute
     }
     '/_shell/training': {
@@ -473,12 +568,17 @@ declare module '@tanstack/react-router' {
 
 interface ShellRouteChildren {
   ShellAtlasRoute: typeof ShellAtlasRoute
+  ShellCbtaRoute: typeof ShellCbtaRoute
   ShellDashboardRoute: typeof ShellDashboardRoute
   ShellDatabaseRoute: typeof ShellDatabaseRoute
   ShellFleetRoute: typeof ShellFleetRoute
   ShellFlightsRoute: typeof ShellFlightsRoute
+  ShellInvoicingRoute: typeof ShellInvoicingRoute
+  ShellMyHubRoute: typeof ShellMyHubRoute
+  ShellOperationsRoute: typeof ShellOperationsRoute
   ShellProfileRoute: typeof ShellProfileRoute
   ShellScheduleRoute: typeof ShellScheduleRoute
+  ShellSmsRoute: typeof ShellSmsRoute
   ShellTrainingRoute: typeof ShellTrainingRoute
   ShellAdminApprovalsRoute: typeof ShellAdminApprovalsRoute
   ShellAdminAuditRoute: typeof ShellAdminAuditRoute
@@ -495,12 +595,17 @@ interface ShellRouteChildren {
 
 const ShellRouteChildren: ShellRouteChildren = {
   ShellAtlasRoute: ShellAtlasRoute,
+  ShellCbtaRoute: ShellCbtaRoute,
   ShellDashboardRoute: ShellDashboardRoute,
   ShellDatabaseRoute: ShellDatabaseRoute,
   ShellFleetRoute: ShellFleetRoute,
   ShellFlightsRoute: ShellFlightsRoute,
+  ShellInvoicingRoute: ShellInvoicingRoute,
+  ShellMyHubRoute: ShellMyHubRoute,
+  ShellOperationsRoute: ShellOperationsRoute,
   ShellProfileRoute: ShellProfileRoute,
   ShellScheduleRoute: ShellScheduleRoute,
+  ShellSmsRoute: ShellSmsRoute,
   ShellTrainingRoute: ShellTrainingRoute,
   ShellAdminApprovalsRoute: ShellAdminApprovalsRoute,
   ShellAdminAuditRoute: ShellAdminAuditRoute,

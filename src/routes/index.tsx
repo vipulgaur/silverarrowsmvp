@@ -1,11 +1,12 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useCallback, useState } from "react";
-import { ArrowRight, BookOpen, CheckCircle2, Clock, Info, Lock, Plane, Users, X } from "lucide-react";
+import { ArrowRight, BookOpen, CheckCircle2, Clock, FileDown, Info, Lock, Plane, Users, X } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { HomepageAviationSequence } from "@/components/homepage-aviation-sequence";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { APP_BUILD_HASH } from "@/lib/build-info";
+import { downloadDifferenceReportPdf } from "@/lib/difference-report-pdf";
 
 const TOP_BAR_LINKS = [
   {
@@ -109,7 +110,17 @@ function MinimalLandingPage() {
             })}
           </nav>
 
-          <div className="flex items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => downloadDifferenceReportPdf()}
+              data-testid="download-difference-report-pdf"
+              className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary shadow-2xs transition hover:bg-primary hover:text-primary-foreground cursor-pointer"
+              title="Download Comprehensive SilverArrows vs FlightLogger REA Architecture Difference Report (PDF)"
+            >
+              <FileDown className="h-3.5 w-3.5" />
+              <span>Difference Report (PDF)</span>
+            </button>
             <ThemeToggle />
           </div>
         </div>
@@ -281,90 +292,97 @@ function MinimalLandingPage() {
                   : "pointer-events-none translate-y-5 scale-[0.97] opacity-0 blur-md"
               }`}
             >
-              {/* Tile 1: E-Learning */}
-              <div className="group relative flex flex-col justify-between rounded-3xl border border-border bg-card/85 p-5 shadow-sm backdrop-blur-xl transition-all hover:border-primary/60 hover:shadow-lg sm:p-6">
+              {/* Tile 1: E-Learning Ground School */}
+              <div className="group relative flex flex-col justify-between rounded-3xl border border-border/80 bg-card/85 p-5 shadow-sm backdrop-blur-xl transition-all hover:border-primary/60 hover:shadow-xl sm:p-6">
                 <div>
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/15 text-primary ring-1 ring-primary/30 transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-500 ring-1 ring-sky-500/30 transition-colors group-hover:bg-sky-500 group-hover:text-white">
                       <BookOpen className="h-5 w-5" />
                     </div>
-                    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                      Admin Course Assignment
+                    <span className="rounded-full bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-600 dark:text-sky-400 font-mono">
+                      EASA / DGCA SYLLABUS
                     </span>
                   </div>
-                  <h2 className="mt-4 text-xl font-bold tracking-tight sm:text-2xl">
-                    E-Learning Ground School
+                  <h2 className="mt-4 text-xl font-extrabold tracking-tight sm:text-2xl text-foreground">
+                    Ground School Academy
                   </h2>
                   <p className="mt-2 text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                    Administrator-managed course portal for <strong>Air Manual — Pooley</strong> (19
-                    chapters with interactive diagrams) and <strong>Air Law</strong>. Administrators
-                    assign courses here; members view only their assigned courses in their profile.
+                    Interactive theory syllabus featuring Pooley's Air Manual with interactive cockpit
+                    diagrams, Air Law regulations, and per-cadet syllabus tracking.
                   </p>
                   <div className="mt-4 space-y-2 text-xs font-medium text-muted-foreground">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-                      <span>Air Manual — Pooley (19 Chapters &amp; Diagrams)</span>
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-500" />
+                      <span className="text-foreground">19 Interactive Pooley Theory Chapters</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-                      <span>Air Law (Regulations, Airspace &amp; Rules of the Air)</span>
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-500" />
+                      <span className="text-foreground">Air Law &amp; Flight Regulations Explorer</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-500" />
+                      <span className="text-foreground">Cadet Profile Syllabus Assignment</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-border">
-                  <Button asChild className="h-10 w-full rounded-full font-semibold shadow-sm">
-                    <Link to="/elearning">
-                      <BookOpen className="mr-2 h-4 w-4" />
-                      Open E-Learning
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
+                <div className="mt-6 pt-4 border-t border-border/60">
+                  <Link
+                    to="/elearning"
+                    data-testid="landing-btn-elearning"
+                    className="relative inline-flex items-center justify-center w-full px-5 py-3.5 text-sm font-black tracking-wide text-white rounded-2xl bg-gradient-to-b from-sky-500 via-sky-600 to-sky-700 shadow-[0_5px_0_0_#0284c7,0_10px_20px_rgba(2,132,199,0.35)] border-t border-sky-300/40 hover:from-sky-400 hover:to-sky-600 hover:shadow-[0_6px_0_0_#0284c7,0_12px_22px_rgba(2,132,199,0.4)] active:translate-y-1 active:shadow-[0_1px_0_0_#0284c7,0_4px_8px_rgba(2,132,199,0.25)] transition-all cursor-pointer group/btn"
+                  >
+                    <BookOpen className="mr-2 h-4 w-4 drop-shadow" />
+                    <span>Launch E-Learning</span>
+                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
+                  </Link>
                 </div>
               </div>
 
-              {/* Tile 2: Flight Logger */}
-              <div className="group relative flex flex-col justify-between rounded-3xl border border-border bg-card/85 p-5 shadow-sm backdrop-blur-xl transition-all hover:border-primary/60 hover:shadow-lg sm:p-6">
+              {/* Tile 2: Flight Logger / Operations OS */}
+              <div className="group relative flex flex-col justify-between rounded-3xl border border-border/80 bg-card/85 p-5 shadow-sm backdrop-blur-xl transition-all hover:border-amber-500/60 hover:shadow-xl sm:p-6">
                 <div>
                   <div className="flex items-center justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary/15 text-primary ring-1 ring-primary/30 transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-500 ring-1 ring-amber-500/30 transition-colors group-hover:bg-amber-500 group-hover:text-white">
                       <Plane className="h-5 w-5" />
                     </div>
-                    <span className="rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                      Academy Operations OS
+                    <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 font-mono">
+                      OPERATIONS OS
                     </span>
                   </div>
-                  <h2 className="mt-4 text-xl font-bold tracking-tight sm:text-2xl">
-                    SilverArrows Flight Logger
+                  <h2 className="mt-4 text-xl font-extrabold tracking-tight sm:text-2xl text-foreground">
+                    Flight Operations OS
                   </h2>
                   <p className="mt-2 text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                    Certified operations platform with dedicated role portals for student pilots,
-                    flight instructors (CFI), ground school instructors, and academy administrators.
+                    Certified academy operations platform with dedicated role portals, digital pilot
+                    logbooks, fleet scheduling, and verified post-flight records.
                   </p>
                   <div className="mt-4 space-y-2 text-xs font-medium text-muted-foreground">
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-                      <span>Student, CFI, Ground &amp; Admin Portals</span>
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
+                      <span className="text-foreground">Student, CFI &amp; Ground School Portals</span>
                     </div>
                     <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
-                      <span>Electronic Logbooks, Fleet Tracking &amp; Audit Trail</span>
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
+                      <span className="text-foreground">Electronic Logbooks &amp; Fleet Scheduling</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
+                      <span className="text-foreground">Post-Flight Verification &amp; Audit Trail</span>
                     </div>
                   </div>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-border">
-                  <Button
-                    asChild
-                    variant="default"
-                    className="h-10 w-full rounded-full font-semibold shadow-sm"
+                <div className="mt-6 pt-4 border-t border-border/60">
+                  <Link
+                    to="/login"
+                    data-testid="landing-btn-flight-logger"
+                    className="relative inline-flex items-center justify-center w-full px-5 py-3.5 text-sm font-black tracking-wide text-white rounded-2xl bg-gradient-to-b from-amber-500 via-amber-600 to-amber-700 shadow-[0_5px_0_0_#b45309,0_10px_20px_rgba(217,119,6,0.35)] border-t border-amber-300/40 hover:from-amber-400 hover:to-amber-600 hover:shadow-[0_6px_0_0_#b45309,0_12px_22px_rgba(217,119,6,0.4)] active:translate-y-1 active:shadow-[0_1px_0_0_#b45309,0_4px_8px_rgba(217,119,6,0.25)] transition-all cursor-pointer group/btn"
                   >
-                    <Link to="/login">
-                      <Lock className="mr-2 h-4 w-4" />
-                      Launch Flight Logger
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Link>
-                  </Button>
+                    <Plane className="mr-2 h-4 w-4 drop-shadow" />
+                    <span>Enter Flight Operations</span>
+                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
+                  </Link>
                 </div>
               </div>
             </div>

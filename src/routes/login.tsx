@@ -1343,6 +1343,26 @@ function LoginPage() {
   const [role, setRole] = useState<Role>("student");
   const [busy, setBusy] = useState(false);
 
+  // Tracks newly created accounts awaiting Administrator approval so the UI immediately
+  // locks onto the pending screen without duplicate validation loops or conflicting error banners
+  const [registeredPendingAccount, setRegisteredPendingAccount] = useState<{
+    name: string;
+    email: string;
+    phone: string;
+    role: Role;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("sa_pending_registration");
+      if (raw) {
+        setRegisteredPendingAccount(JSON.parse(raw));
+      }
+    } catch {
+      /* ignore storage errors */
+    }
+  }, []);
+
   const passwordInputRef = useRef<HTMLInputElement | null>(null);
 
   // Handle selecting a persona from the Quick Login dropdown
@@ -1377,9 +1397,40 @@ function LoginPage() {
     void navigate({ to: "/dashboard" });
   }
 
+  // Matching user in database for the pending registration candidate
+  const matchingPendingUser = useMemo(() => {
+    if (!registeredPendingAccount) return null;
+    return (
+      data.users.find(
+        (u) =>
+          u.email.toLowerCase() === registeredPendingAccount.email.toLowerCase() &&
+          u.status !== "deleted",
+      ) ?? null
+    );
+  }, [registeredPendingAccount, data.users]);
+
   // Real-time auto-unlock when an Administrator approves a waiting pending user
   const wasPendingRef = useRef(false);
   useEffect(() => {
+    // If the registered candidate was approved in data.users
+    if (
+      registeredPendingAccount &&
+      matchingPendingUser &&
+      !isUserPendingApproval(matchingPendingUser)
+    ) {
+      setRegisteredPendingAccount(null);
+      try {
+        sessionStorage.removeItem("sa_pending_registration");
+      } catch {}
+      playNotificationSound();
+      toast.success(
+        "Your account login has been approved by the Administrator! Please sign in to enter operations.",
+      );
+      setMode("signin");
+      setEmail(matchingPendingUser.email);
+      return;
+    }
+
     if (!hydrated || !me) {
       wasPendingRef.current = false;
       return;
@@ -1392,13 +1443,23 @@ function LoginPage() {
       toast.success("Your account login has been approved by the Administrator! Entering portal…");
       void navigate({ to: "/dashboard" });
     }
-  }, [hydrated, me, navigate]);
+  }, [hydrated, me, navigate, registeredPendingAccount, matchingPendingUser]);
+
+  const isPendingApprovalView =
+    Boolean(hydrated && me && isUserPendingApproval(me)) ||
+    Boolean(
+      registeredPendingAccount &&
+        (!matchingPendingUser || isUserPendingApproval(matchingPendingUser)),
+    );
+
+  const displayPendingUser =
+    hydrated && me && isUserPendingApproval(me) ? me : registeredPendingAccount;
 
   // Live validation feedback during account creation:
   // ONLY triggers when username ({username}@flysilverarrows.com) or phone number matches an existing record.
-  // Never triggers when entering first name or last name. Never triggers against the current active session.
+  // Never triggers when entering first name or last name. Never triggers against the current active session or while pending approval.
   const liveSignupError = useMemo(() => {
-    if (mode !== "signup" || (hydrated && me)) return null;
+    if (mode !== "signup" || (hydrated && me) || isPendingApprovalView) return null;
     const uname = extractEmailUsername(signupUsername);
     const rawPhoneDigits = phone.replace(/[^\d]/g, "");
     const formattedPhone = rawPhoneDigits ? formatPhoneWithIsd(signupIsdCode, phone) : "";
@@ -1418,7 +1479,7 @@ function LoginPage() {
       },
       activeUsersWithoutMe,
     );
-  }, [mode, hydrated, me, signupUsername, signupIsdCode, phone, data.users]);
+  }, [mode, hydrated, me, isPendingApprovalView, signupUsername, signupIsdCode, phone, data.users]);
 
   // Handle Form Submission (Sign In or Create Account)
   async function submitAuth(e: FormEvent) {
@@ -1543,6 +1604,17 @@ function LoginPage() {
       return;
     }
 
+    const pendingInfo = {
+      name: `${firstName.trim()} ${lastName.trim()}`,
+      email: clean.toLowerCase(),
+      phone: fullPhone,
+      role,
+    };
+    setRegisteredPendingAccount(pendingInfo);
+    try {
+      sessionStorage.setItem("sa_pending_registration", JSON.stringify(pendingInfo));
+    } catch {}
+
     // Reset registration inputs immediately to prevent duplicate validation conflict
     setFirstName("");
     setLastName("");
@@ -1559,6 +1631,10 @@ function LoginPage() {
   }
 
   const handleSignOut = async () => {
+    setRegisteredPendingAccount(null);
+    try {
+      sessionStorage.removeItem("sa_pending_registration");
+    } catch {}
     setFirstName("");
     setLastName("");
     setSignupUsername("");
@@ -1617,27 +1693,27 @@ function LoginPage() {
                 </span>
               </div>
               <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary dark:text-sky-400">
-                {hydrated && me
-                  ? isUserPendingApproval(me)
-                    ? "Approval Pending"
-                    : "Active Session"
-                  : mode === "signin"
-                    ? "Portal Sign In"
-                    : "Register Profile"}
+                {isPendingApprovalView
+                  ? "Approval Pending"
+                  : hydrated && me
+                    ? "Active Session"
+                    : mode === "signin"
+                      ? "Portal Sign In"
+                      : "Register Profile"}
               </h1>
               <p className="text-xs sm:text-sm text-muted-foreground font-medium">
-                {hydrated && me
-                  ? isUserPendingApproval(me)
-                    ? "Your account registration has been saved to the database and is awaiting Administrator approval."
-                    : `Currently signed in as ${me.name} (${roleLabel[me.role]}).`
-                  : mode === "signin"
-                    ? "Sign in to access your flight operations, syllabus, and logbooks."
-                    : "Create a new member entry in the local academy database."}
+                {isPendingApprovalView
+                  ? "Your account registration has been saved to the database and is awaiting Administrator approval."
+                  : hydrated && me
+                    ? `Currently signed in as ${me.name} (${roleLabel[me.role]}).`
+                    : mode === "signin"
+                      ? "Sign in to access your flight operations, syllabus, and logbooks."
+                      : "Create a new member entry in the local academy database."}
               </p>
             </div>
 
-            {/* Smooth Mode Switcher Pill Control (ONLY shown when NOT signed in) */}
-            {(!hydrated || !me) && (
+            {/* Smooth Mode Switcher Pill Control (ONLY shown when NOT signed in and NOT in pending approval view) */}
+            {(!hydrated || !me) && !isPendingApprovalView && (
               <div
                 className="relative flex items-center rounded-full border border-border/80 bg-muted/60 p-1 shadow-inner backdrop-blur-md self-start sm:self-center shrink-0"
                 role="tablist"
@@ -1677,8 +1753,8 @@ function LoginPage() {
             )}
           </div>
 
-          {/* Condition 1: User is logged in and awaiting administrator approval */}
-          {hydrated && me && isUserPendingApproval(me) ? (
+          {/* Condition 1: User is awaiting administrator approval (either authenticated or just registered) */}
+          {isPendingApprovalView && displayPendingUser ? (
             <div className="my-auto py-4 space-y-5 animate-in fade-in duration-300">
               <div className="rounded-3xl border border-amber-500/50 bg-amber-500/10 p-6 sm:p-8 text-center space-y-4 shadow-lg backdrop-blur-xl">
                 <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 shadow-inner">
@@ -1705,22 +1781,22 @@ function LoginPage() {
                   <div className="flex items-center justify-between border-b border-border/60 pb-3">
                     <div className="flex items-center gap-3">
                       <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500 text-slate-950 font-mono font-bold text-sm shadow-xs">
-                        {me.name.slice(0, 2).toUpperCase()}
+                        {displayPendingUser.name.slice(0, 2).toUpperCase()}
                       </span>
                       <div>
-                        <div className="font-bold text-sm text-foreground">{me.name}</div>
-                        <div className="text-xs text-muted-foreground font-mono">{me.email}</div>
+                        <div className="font-bold text-sm text-foreground">{displayPendingUser.name}</div>
+                        <div className="text-xs text-muted-foreground font-mono">{displayPendingUser.email}</div>
                       </div>
                     </div>
                     <span className="rounded-full border border-amber-500/40 bg-amber-500/15 px-2.5 py-0.5 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                      {roleLabel[me.role]}
+                      {roleLabel[displayPendingUser.role]}
                     </span>
                   </div>
 
                   <div className="pt-3 grid grid-cols-2 gap-2 text-[11px]">
                     <div>
                       <span className="text-muted-foreground">Registered Phone: </span>
-                      <span className="font-medium text-foreground">{me.phone || "—"}</span>
+                      <span className="font-medium text-foreground">{displayPendingUser.phone || "—"}</span>
                     </div>
                     <div className="text-right">
                       <span className="text-muted-foreground">Status: </span>

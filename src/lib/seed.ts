@@ -1,5 +1,6 @@
 import { addDays, format } from "date-fns";
 import type { AppData, Flight } from "./types";
+import { ensureReaCollections } from "./rea-seed";
 
 const RAW_FLIGHTS: Array<
   [
@@ -761,7 +762,7 @@ export function seedData(now = new Date("2026-10-19T12:00:00Z")): AppData {
     return dt.toISOString();
   };
 
-  return {
+  return ensureReaCollections({
     users: [
       {
         id: "u-admin",
@@ -1572,5 +1573,5 @@ export function seedData(now = new Date("2026-10-19T12:00:00Z")): AppData {
         verifiedBy: "u-admin",
       },
     ],
-  };
+  });
 }

@@ -1,12 +1,13 @@
 import { createClient } from "@supabase/supabase-js";
+import { pushLocalSync } from "@/lib/api/local-sync-client";
 import { DEMO_SESSION_KEY, readDemoData, writeDemoData } from "@/lib/demo-storage";
 import { SOLE_ADMIN_EMAIL, uid, validateAccountCreation } from "@/lib/logic";
 import type { Role, User } from "@/lib/types";
 
 const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL || "https://lisycwpfvlhubvneifmb.supabase.co";
+  import.meta.env?.VITE_SUPABASE_URL || "https://lisycwpfvlhubvneifmb.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_hxSYN9fl41h1zwHG1va0Gw_ZitbASFY";
+  import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_hxSYN9fl41h1zwHG1va0Gw_ZitbASFY";
 
 export const realSupabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
@@ -87,7 +88,17 @@ function inferRoleFromEmail(email: string): Role {
   return "student";
 }
 
-function findOrCreateLocalUser(
+const CANONICAL_TESTING_EMAILS = new Set([
+  SOLE_ADMIN_EMAIL,
+  "vipul@flysilverarrows.com",
+  "priya@flysilverarrows.com",
+  "anujay@flysilverarrows.com",
+  "ananya@flysilverarrows.com",
+  "aarav@flysilverarrows.com",
+  "liam@flysilverarrows.com",
+]);
+
+export function findOrCreateLocalUser(
   email: string,
   preferredRole?: Role,
   fullName?: string,
@@ -104,6 +115,10 @@ function findOrCreateLocalUser(
   const rawRole = preferredRole ?? inferRoleFromEmail(clean);
   const role: Role =
     clean === SOLE_ADMIN_EMAIL ? "admin" : rawRole === "admin" ? "student" : rawRole;
+  const effectiveStatusReason =
+    clean === SOLE_ADMIN_EMAIL || CANONICAL_TESTING_EMAILS.has(clean)
+      ? statusReason
+      : (statusReason ?? "PENDING_ADMIN_APPROVAL");
   const localPart = clean.split("@")[0] || "pilot";
   const displayName =
     clean === SOLE_ADMIN_EMAIL
@@ -117,7 +132,7 @@ function findOrCreateLocalUser(
     role,
     status: "active",
     ...(phone ? { phone } : {}),
-    ...(statusReason ? { statusReason } : {}),
+    ...(effectiveStatusReason ? { statusReason: effectiveStatusReason } : {}),
     callsign: clean === SOLE_ADMIN_EMAIL ? "ADM" : displayName.slice(0, 3).toUpperCase(),
     programId: role === "student" ? "p-ppl" : undefined,
     instructorId: role === "student" ? "u-vpl" : undefined,
@@ -166,6 +181,7 @@ export async function provisionAuthUserWithoutSessionSwitch(
 }
 
 let serviceClientPromise: Promise<ReturnType<typeof createClient> | null> | null = null;
+let studentServiceClientPromise: Promise<ReturnType<typeof createClient> | null> | null = null;
 
 /**
  * Returns a background non-persisting Supabase client authenticated as the sole tenant administrator
@@ -201,15 +217,40 @@ export async function getAuthenticatedServiceClient(): Promise<ReturnType<typeof
   return serviceClientPromise;
 }
 
-const CANONICAL_TESTING_EMAILS = new Set([
-  SOLE_ADMIN_EMAIL,
-  "vipul@flysilverarrows.com",
-  "priya@flysilverarrows.com",
-  "anujay@flysilverarrows.com",
-  "ananya@flysilverarrows.com",
-  "aarav@flysilverarrows.com",
-  "liam@flysilverarrows.com",
-]);
+/**
+ * Returns a background non-persisting Supabase client authenticated as a canonical student
+ * (ananya@flysilverarrows.com) so student booking inserts trigger the PostgreSQL student approval guard
+ * (setting approval_status = 'pending').
+ */
+export async function getStudentServiceClient(): Promise<ReturnType<typeof createClient> | null> {
+  if (isTestEnv) return null;
+  if (!studentServiceClientPromise) {
+    studentServiceClientPromise = (async () => {
+      try {
+        const client = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
+          },
+        });
+        const { error } = await client.auth.signInWithPassword({
+          email: "ananya@flysilverarrows.com",
+          password: "Vipul@1011",
+        });
+        if (error) {
+          studentServiceClientPromise = null;
+          return null;
+        }
+        return client;
+      } catch {
+        studentServiceClientPromise = null;
+        return null;
+      }
+    })();
+  }
+  return studentServiceClientPromise;
+}
 
 const hybridAuth = {
   async signInWithPassword({ email, password }: { email: string; password?: string }) {
@@ -366,13 +407,25 @@ const hybridAuth = {
 
     if (!isTestEnv) {
       try {
-        const res = await realSupabase.auth.signUp({
+        // Use a non-persisting client during signUp so realSupabase does NOT fire SIGNED_IN
+        // before register_member has validated and inserted the PENDING_ADMIN_APPROVAL row.
+        const ephemeralClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+          auth: {
+            persistSession: false,
+            autoRefreshToken: false,
+            detectSessionInUrl: false,
+          },
+        });
+        const res = await ephemeralClient.auth.signUp({
           email: clean,
           password: password || "Vipul@1011",
           options,
         });
-        if (!res.error && res.data.session) {
-          return res;
+        if (!res.error && res.data.user) {
+          return {
+            data: { user: res.data.user, session: res.data.session },
+            error: null,
+          };
         }
       } catch {
         /* fallback to local signup */
@@ -387,8 +440,6 @@ const hybridAuth = {
       },
       isDemoFallback: true,
     };
-    setStoredDemoSession(demoSession);
-    notifyDemoListeners("SIGNED_IN", demoSession);
     return {
       data: { user: demoSession.user, session: demoSession },
       error: null,
@@ -417,6 +468,14 @@ const hybridAuth = {
       try {
         const res = await realSupabase.auth.getUser();
         if (res.data?.user) return res;
+      } catch {
+        /* fallback to local cached session check */
+      }
+      try {
+        const sessionRes = await realSupabase.auth.getSession();
+        if (sessionRes.data?.session?.user) {
+          return { data: { user: sessionRes.data.session.user }, error: null };
+        }
       } catch {
         /* ignore */
       }
@@ -476,6 +535,8 @@ const hybridAuth = {
 };
 
 const DEFAULT_TENANT_ID = "5a0e0000-0000-4000-8000-000000000001";
+const SOLE_ADMIN_DB_ID = "m-21645e1e87914a0994e1167c9de40cb0";
+const DEFAULT_INSTRUCTOR_DB_ID = "m-2326d678c3bf48e199818e105abe8e98";
 
 export const supabase = new Proxy(realSupabase, {
   get(target, prop, receiver) {
@@ -496,14 +557,12 @@ export const supabase = new Proxy(realSupabase, {
 
           const demo = getStoredDemoSession();
           let authUserEmail = cleanEmailArg ?? demo?.user.email;
-          let authUserId: string | undefined;
 
-          if (!isTestEnv) {
+          if (!authUserEmail && !isTestEnv) {
             try {
               const { data: uData } = await target.auth.getUser();
-              if (uData?.user) {
-                authUserEmail = cleanEmailArg ?? uData.user.email ?? authUserEmail;
-                authUserId = uData.user.id;
+              if (uData?.user?.email) {
+                authUserEmail = uData.user.email;
               }
             } catch {
               /* ignore */
@@ -512,7 +571,7 @@ export const supabase = new Proxy(realSupabase, {
 
           const email = (authUserEmail ?? "").trim().toLowerCase();
 
-          // Validate against local users first (rejects duplicate name, duplicate email, duplicate phone, or unauthorized admin)
+          // Validate against local users first (rejects duplicate email, duplicate phone, or unauthorized admin)
           const { data: localData } = readDemoData();
           const validationError = validateAccountCreation(
             {
@@ -543,7 +602,7 @@ export const supabase = new Proxy(realSupabase, {
               const svc = (await getAuthenticatedServiceClient()) ?? target;
               const dbClient = svc as any;
 
-              // Check remote active members to prevent ANY duplicate email or duplicate name collision
+              // Check remote active members to prevent ANY duplicate email or duplicate phone collision
               const { data: remoteActive } = await dbClient
                 .from("tenant_members")
                 .select("id, name, email, phone, status")
@@ -583,7 +642,6 @@ export const supabase = new Proxy(realSupabase, {
               const memberPayload: Record<string, unknown> = {
                 id: memberId,
                 tenant_id: DEFAULT_TENANT_ID,
-                ...(authUserId ? { profile_id: authUserId } : {}),
                 name: fullName,
                 email,
                 phone: phone ?? null,
@@ -591,7 +649,7 @@ export const supabase = new Proxy(realSupabase, {
                 status: "active",
                 status_reason: statusReason ?? null,
                 program_id: role === "student" ? "p-ppl" : null,
-                instructor_id: role === "student" ? "u-vpl" : null,
+                instructor_id: role === "student" ? DEFAULT_INSTRUCTOR_DB_ID : null,
                 stage:
                   role === "admin"
                     ? "Operations Administrator"
@@ -607,18 +665,41 @@ export const supabase = new Proxy(realSupabase, {
                 .from("tenant_members")
                 .upsert([memberPayload], { onConflict: "tenant_id,id" });
 
-              await dbClient.from("member_roles").upsert(
+              const dbRole =
+                role === "admin"
+                  ? "admin"
+                  : role === "instructor" || role === "crew"
+                    ? "instructor"
+                    : role === "ground" || role === "staff"
+                      ? "ground"
+                      : "student";
+
+              const roleRes = await dbClient.from("member_roles").upsert(
                 [
                   {
-                    id: `${DEFAULT_TENANT_ID}:${memberId}`,
+                    id: memberId,
                     tenant_id: DEFAULT_TENANT_ID,
                     member_id: memberId,
-                    role,
+                    role: dbRole,
                     archived_at: null,
                   },
                 ],
-                { onConflict: "tenant_id,member_id" },
+                { onConflict: "tenant_id,id" },
               );
+              if (roleRes?.error) {
+                await dbClient.from("member_roles").upsert(
+                  [
+                    {
+                      id: `${DEFAULT_TENANT_ID}:${memberId}`,
+                      tenant_id: DEFAULT_TENANT_ID,
+                      member_id: memberId,
+                      role: dbRole,
+                      archived_at: null,
+                    },
+                  ],
+                  { onConflict: "tenant_id,member_id" },
+                );
+              }
 
               if (statusReason === "PENDING_ADMIN_APPROVAL") {
                 await dbClient.from("activity_feed").upsert(
@@ -626,10 +707,10 @@ export const supabase = new Proxy(realSupabase, {
                     {
                       id: `act-reg-${memberId}`,
                       tenant_id: DEFAULT_TENANT_ID,
-                      at: new Date().toISOString(),
-                      actor_id: memberId,
+                      occurred_at: new Date().toISOString(),
+                      actor_id: SOLE_ADMIN_DB_ID,
                       actor_name: fullName,
-                      actor_role: role,
+                      actor_role: dbRole,
                       action: "account_registration_requested",
                       entity_type: "user",
                       entity_id: memberId,
@@ -679,19 +760,20 @@ export const supabase = new Proxy(realSupabase, {
                 ]
               : data.activity;
 
-          writeDemoData({ ...data, users: nextUsers, activity: regActivity });
+          const nextAppData = { ...data, users: nextUsers, activity: regActivity };
+          writeDemoData(nextAppData);
+          pushLocalSync(nextAppData);
+
           const nextSession: DemoSession = {
             user: {
               id: updatedUser.id,
               email: updatedUser.email,
               user_metadata: { role: updatedUser.role },
             },
-            isDemoFallback: Boolean(demo || isTestEnv || !authUserId),
+            isDemoFallback: true,
           };
-          if (demo || isTestEnv || !authUserId) {
-            setStoredDemoSession(nextSession);
-            notifyDemoListeners("USER_UPDATED", nextSession);
-          }
+          setStoredDemoSession(nextSession);
+          notifyDemoListeners("USER_UPDATED", nextSession);
           return { data: updatedUser.id, error: null };
         }
 

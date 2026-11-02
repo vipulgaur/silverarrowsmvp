@@ -30,13 +30,27 @@ export const Route = createFileRoute("/_shell/database")({
 
 type TableKey =
   | "users"
+  | "aircraftModels"
   | "aircraft"
   | "maintenance"
+  | "aircraftRemarks"
   | "programs"
   | "lessons"
+  | "userLectures"
+  | "gradedCompetencies"
   | "bookings"
+  | "bookingConflicts"
+  | "soloEndorsements"
   | "flights"
+  | "electronicLogbookEntries"
+  | "landingsLog"
   | "completions"
+  | "customers"
+  | "billingActivities"
+  | "invoices"
+  | "smsReports"
+  | "userCertificates"
+  | "webauthnCredentials"
   | "requests"
   | "profileRequests"
   | "subjects"
@@ -61,20 +75,29 @@ const TABLE_SCHEMAS: TableSchemaMeta[] = [
   {
     key: "users",
     tableName: "members + member_roles",
-    label: "Members & Roles (users)",
+    label: "Members & 7-Role RBAC (users)",
     pk: "id (UUID / member ID)",
     fks: ["instructorId → users.id", "programId → programs.id"],
     description:
-      "Academy members (students, CFIs, ground instructors, admins) and RBAC role assignments.",
+      "Academy members across all 7 FlightLogger REA roles (admin, staff, instructor, crew, ground, student, renter).",
+  },
+  {
+    key: "aircraftModels",
+    tableName: "aircraft_models",
+    label: "Aircraft Models & CG Envelopes (aircraftModels)",
+    pk: "id",
+    fks: [],
+    description:
+      "Aircraft types, class ratings (SEP/MEP/FNPT II), fuel burn, and Weight & Balance CG envelope polygons.",
   },
   {
     key: "aircraft",
     tableName: "aircraft",
     label: "Fleet Aircraft (aircraft)",
     pk: "id",
-    fks: [],
+    fks: ["modelId → aircraft_models.id"],
     description:
-      "Training fleet airframes, hourly rates, airframe/tach hours, and serviceability state.",
+      "Training fleet airframes, hourly rates, airframe/tach/Hobbs hours, and serviceability state.",
   },
   {
     key: "maintenance",
@@ -86,12 +109,21 @@ const TABLE_SCHEMAS: TableSchemaMeta[] = [
       "Scheduled inspections, 50h/100h checks, and airworthiness directives per airframe.",
   },
   {
+    key: "aircraftRemarks",
+    tableName: "aircraft_remarks",
+    label: "Pilot Squawk Sheet & CAMO CRS (aircraftRemarks)",
+    pk: "id",
+    fks: ["aircraftId → aircraft.id", "reportedBy → users.id"],
+    description:
+      "Post-flight technical squawks, MEL deferrals, grounding defects, and CAMO Certificate of Release to Service.",
+  },
+  {
     key: "programs",
     tableName: "programs",
     label: "Training Programs (programs)",
     pk: "id",
     fks: [],
-    description: "Approved EASA Part-FCL training syllabi (e.g. PPL(A), LAPL(A), Night Rating).",
+    description: "Approved EASA Part-FCL / DGCA training syllabi (PPL, CPL, IR, ME).",
   },
   {
     key: "lessons",
@@ -103,9 +135,27 @@ const TABLE_SCHEMAS: TableSchemaMeta[] = [
       "Individual flight, simulator, and ground exercises belonging to a training program.",
   },
   {
+    key: "userLectures",
+    tableName: "user_lectures",
+    label: "CBTA Flight Folders (userLectures)",
+    pk: "id",
+    fks: ["studentId → users.id", "lessonId → lessons.id", "flightId → flights.id"],
+    description:
+      "Per-attempt syllabus flight folders with 1–5 CBTA norm grade, repeat_required lock, and dual SHA-256 signatures.",
+  },
+  {
+    key: "gradedCompetencies",
+    tableName: "graded_competencies",
+    label: "8-Axis CBTA Competency Scores (gradedCompetencies)",
+    pk: "id",
+    fks: ["userLectureId → user_lectures.id", "studentId → users.id"],
+    description:
+      "ICAO Doc 9995 / EASA CBTA 1–5 scores across KNO, FPA, FPO, COM, WLM, SAW, PRB, and LST.",
+  },
+  {
     key: "bookings",
     tableName: "bookings",
-    label: "Dispatch Bookings (bookings)",
+    label: "6-Stage FSM Dispatch Bookings (bookings)",
     pk: "id",
     fks: [
       "aircraftId → aircraft.id",
@@ -113,7 +163,26 @@ const TABLE_SCHEMAS: TableSchemaMeta[] = [
       "instructorId → users.id",
       "lessonId → lessons.id",
     ],
-    description: "Scheduled dual, solo, and maintenance slots with student booking approval state.",
+    description:
+      "6-Stage FSM bookings (scheduled → briefing → flight → landed → debriefing → completed | cancelled).",
+  },
+  {
+    key: "bookingConflicts",
+    tableName: "booking_conflicts",
+    label: "7-Gate Dispatch Conflicts (bookingConflicts)",
+    pk: "id",
+    fks: ["bookingId → bookings.id", "overriddenBy → users.id"],
+    description:
+      "Pre-flight dispatch gate conflicts and Accountable Manager override justifications.",
+  },
+  {
+    key: "soloEndorsements",
+    tableName: "solo_endorsements",
+    label: "24h Solo Endorsements (soloEndorsements)",
+    pk: "id",
+    fks: ["studentId → users.id", "instructorId → users.id", "aircraftModelId → aircraft_models.id"],
+    description:
+      "Gate 7 digital instructor solo authorizations with weather/crosswind minima and 24-hour validity.",
   },
   {
     key: "flights",
@@ -131,6 +200,24 @@ const TABLE_SCHEMAS: TableSchemaMeta[] = [
       "Completed flight debrief entries, block times, tach readings, landings, and grades.",
   },
   {
+    key: "electronicLogbookEntries",
+    tableName: "electronic_logbook_entries",
+    label: "Dual Signed Electronic Logbook (electronicLogbookEntries)",
+    pk: "id",
+    fks: ["userId → users.id", "flightId → flights.id"],
+    description:
+      "Immutable EASA FCL.050 / DGCA CAR dual-synthesized student + instructor logbook rows with SHA-256 hash.",
+  },
+  {
+    key: "landingsLog",
+    tableName: "landings",
+    label: "Aerodrome Landings & Approaches (landingsLog)",
+    pk: "id",
+    fks: ["flightId → flights.id", "pilotId → users.id"],
+    description:
+      "Granular day/night full-stop and touch-and-go landings plus ILS/RNP/Visual approaches.",
+  },
+  {
     key: "completions",
     tableName: "lesson_completions",
     label: "Lesson Completions (completions)",
@@ -143,6 +230,60 @@ const TABLE_SCHEMAS: TableSchemaMeta[] = [
     ],
     description:
       "Signed-off syllabus exercises linking student progress to flight logbook records.",
+  },
+  {
+    key: "customers",
+    tableName: "customers",
+    label: "ACI Customer Retainer Accounts (customers)",
+    pk: "id",
+    fks: ["userId → users.id"],
+    description:
+      "Student and renter financial accounts, retainer balances, credit limits, and GSTIN state codes.",
+  },
+  {
+    key: "billingActivities",
+    tableName: "billing_activities",
+    label: "ACI Unbilled Flight Queue (billingActivities)",
+    pk: "id",
+    fks: ["customerId → customers.id", "flightId → flights.id"],
+    description:
+      "Auto-generated post-flight wet aircraft, instructor, and landing charges with SAC codes.",
+  },
+  {
+    key: "invoices",
+    tableName: "invoices",
+    label: "Indian GST Tax Invoices (invoices)",
+    pk: "id",
+    fks: ["customerId → customers.id", "userId → users.id"],
+    description:
+      "Issued GST tax invoices with CGST/SGST/IGST breakdowns and Stripe PaymentIntent references.",
+  },
+  {
+    key: "smsReports",
+    tableName: "sms_reports",
+    label: "ICAO Doc 9859 SMS Reports (smsReports)",
+    pk: "id",
+    fks: ["reportedBy → users.id", "flightId → flights.id"],
+    description:
+      "Safety occurrences, 5×5 Severity × Likelihood risk indices, confidential flags, and CAPA plans.",
+  },
+  {
+    key: "userCertificates",
+    tableName: "user_certificates",
+    label: "Pilot Certificates & Ratings (userCertificates)",
+    pk: "id",
+    fks: ["userId → users.id", "certificateTypeId → certificate_types.id"],
+    description:
+      "Medical, licence, radio, and class rating records evaluated by Gate 1 & Gate 3.",
+  },
+  {
+    key: "webauthnCredentials",
+    tableName: "webauthn_credentials",
+    label: "FIDO2 Hardware Passkeys (webauthnCredentials)",
+    pk: "id",
+    fks: ["userId → users.id"],
+    description:
+      "Enrolled FIDO2 / WebAuthn cryptographic passkeys for Global Pilot Hub authentication.",
   },
   {
     key: "requests",
@@ -212,7 +353,7 @@ const TABLE_SCHEMAS: TableSchemaMeta[] = [
     pk: "id",
     fks: ["instructorId → users.id"],
     description:
-      "Flight instructor duty start/end timestamps enforcing EASA Part-FTL rest and duty limits.",
+      "Flight instructor duty start/end timestamps and mandatory 12-hour rest locks.",
   },
   {
     key: "documents",

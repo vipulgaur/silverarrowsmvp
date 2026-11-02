@@ -1,0 +1,33 @@
+# Default owner for the entire repository (FlightLogger + Admin + Database + Core)
+* @vipulgaur
+
+# Segregated E-Learning Workspace owned by Parth Bhatt (branch: parthbhatt)
+/src/elearning/ @parthbhatt @vipulgaur
+/src/content/learning/ @parthbhatt @vipulgaur
+/src/assets/learning/ @parthbhatt @vipulgaur
+/src/routes/elearning.tsx @parthbhatt @vipulgaur
+/src/routes/_shell.learning.index.tsx @parthbhatt @vipulgaur
+/src/routes/_shell.learning.$chapterId.tsx @parthbhatt @vipulgaur
+/src/routes/_shell.portal.ground.tsx @parthbhatt @vipulgaur
+/src/components/assigned-courses-panel.tsx @parthbhatt @vipulgaur
+/src/components/learning-reader.tsx @parthbhatt @vipulgaur
+/src/components/learning-blocks.tsx @parthbhatt @vipulgaur
+/src/components/air-law-chapter-experience.tsx @parthbhatt @vipulgaur
+/src/components/familiarisation-chapter-experience.tsx @parthbhatt @vipulgaur
+/src/components/universal-chapter-experience.tsx @parthbhatt @vipulgaur
+/src/lib/elearning-courses.ts @parthbhatt @vipulgaur
+/src/lib/learning-subjects.ts @parthbhatt @vipulgaur
+/src/lib/learning-content.ts @parthbhatt @vipulgaur
+/src/lib/learning-source.ts @parthbhatt @vipulgaur
+/src/lib/learning-state.ts @parthbhatt @vipulgaur
+/src/lib/learning-illustrations.ts @parthbhatt @vipulgaur
+/src/lib/airframes-content.ts @parthbhatt @vipulgaur
+/src/lib/airframes-illustrations.ts @parthbhatt @vipulgaur
+/src/lib/airlaw-content.ts @parthbhatt @vipulgaur
+/src/lib/airlaw-illustrations.ts @parthbhatt @vipulgaur
+/src/lib/electrics-content.ts @parthbhatt @vipulgaur
+/src/lib/electrics-illustrations.ts @parthbhatt @vipulgaur
+/src/lib/powerplant-content.ts @parthbhatt @vipulgaur
+/src/lib/powerplant-illustrations.ts @parthbhatt @vipulgaur
+/src/lib/universal-chapter-data.ts @parthbhatt @vipulgaur
+/src/lib/chapter-01-redesign-data.ts @parthbhatt @vipulgaur

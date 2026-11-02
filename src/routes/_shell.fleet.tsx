@@ -15,8 +15,16 @@ import {
 } from "@/components/ui/table";
 import { Chip, Field, NativeSelect, PageHeader, Section, Stat } from "@/components/app-ui";
 import { useLookup, useMe } from "@/lib/store";
-import { aircraftUnavailable, can, hoursToService, maintenanceState, uid } from "@/lib/logic";
-import type { Aircraft } from "@/lib/types";
+import {
+  aircraftUnavailable,
+  can,
+  hoursToService,
+  maintenanceState,
+  reportAircraftRemark,
+  resolveAircraftRemark,
+  uid,
+} from "@/lib/logic";
+import type { Aircraft, AircraftRemark } from "@/lib/types";
 
 export const Route = createFileRoute("/_shell/fleet")({
   head: () => ({
@@ -25,7 +33,7 @@ export const Route = createFileRoute("/_shell/fleet")({
       {
         name: "description",
         content:
-          "Aircraft airframe hours, 50h/100h/ARC maintenance tracking, grounding controls and service log.",
+          "Aircraft airframe hours, 50h/100h/ARC maintenance tracking, pilot squawk sheet, CAMO CRS release, and grounding controls.",
       },
     ],
   }),
@@ -40,6 +48,60 @@ function FleetPage() {
   const [title, setTitle] = useState("");
   const [dueHours, setDueHours] = useState("");
   const [dueDate, setDueDate] = useState("");
+
+  // Squawk & CAMO CRS state
+  const [squawkAcId, setSquawkAcId] = useState(data.aircraft[0]?.id ?? "ac-1");
+  const [squawkSeverity, setSquawkSeverity] = useState<AircraftRemark["severity"]>("warning");
+  const [squawkDesc, setSquawkDesc] = useState("");
+  const [crsLicense, setCrsLicense] = useState("DGCA-AME-B1.2-08419");
+  const [crsNotes, setCrsNotes] = useState(
+    "Inspected and rectified IAW Cessna 172S AMM Chapter 32; released to service.",
+  );
+
+  function handleReportSquawk(e: FormEvent) {
+    e.preventDefault();
+    const res = reportAircraftRemark(data, me, {
+      aircraftId: squawkAcId,
+      severity: squawkSeverity,
+      description: squawkDesc,
+    });
+    if (typeof res === "string") {
+      toast.error(res);
+      return;
+    }
+    update(() => res);
+    log(
+      "aircraft_squawk_reported",
+      "aircraft",
+      `Reported ${squawkSeverity} squawk on ${lk.aircraft(squawkAcId)?.reg ?? squawkAcId}: ${squawkDesc}`,
+      squawkAcId,
+    );
+    setSquawkDesc("");
+    toast.success(
+      squawkSeverity === "grounding_defect"
+        ? "Grounding defect logged — aircraft automatically grounded (AOG)"
+        : "Aircraft squawk logged in technical log",
+    );
+  }
+
+  function handleResolveSquawk(remarkId: string) {
+    const res = resolveAircraftRemark(data, remarkId, me, {
+      rectifiedByLicense: crsLicense,
+      rectificationNotes: crsNotes,
+    });
+    if (typeof res === "string") {
+      toast.error(res);
+      return;
+    }
+    update(() => res);
+    log(
+      "camo_crs_issued",
+      "maintenance",
+      `Issued CAMO Certificate of Release to Service (CRS) for squawk ${remarkId} (${crsLicense})`,
+      remarkId,
+    );
+    toast.success("CAMO Certificate of Release to Service (CRS) signed off");
+  }
 
   function toggleGround(ac: Aircraft) {
     const isCurrentlyGrounded = Boolean(ac.grounded || ac.status === "grounded");
@@ -131,7 +193,7 @@ function FleetPage() {
     <div>
       <PageHeader
         title="Fleet & Part-CAMO maintenance"
-        subtitle="Real-time airframe hours, scheduled inspections, ARC validity, and dispatch grounding controls."
+        subtitle="Real-time airframe hours, scheduled inspections, ARC validity, pilot squawk sheet, and CAMO CRS release."
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
@@ -297,6 +359,122 @@ function FleetPage() {
                     {can.manageFleet(me.role) && (
                       <Button size="sm" variant="outline" onClick={() => completeMaint(m.id)}>
                         <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Sign off
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </Section>
+
+      {/* Pilot Squawk Sheet & Part-CAMO Certificate of Release to Service (CRS) */}
+      <Section
+        title="Technical Log — Pilot Squawk Sheet & CAMO CRS Release"
+        description="Report post-flight defects or sign off a Certificate of Release to Service (CRS) with AME license authentication."
+        className="mt-6"
+      >
+        <form
+          onSubmit={handleReportSquawk}
+          className="mb-5 grid gap-3 rounded-xl border bg-muted/30 p-4 sm:grid-cols-4"
+        >
+          <Field label="Aircraft">
+            <NativeSelect value={squawkAcId} onChange={(e) => setSquawkAcId(e.target.value)}>
+              {data.aircraft.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.reg} ({a.type})
+                </option>
+              ))}
+            </NativeSelect>
+          </Field>
+          <Field label="Defect Severity">
+            <NativeSelect
+              value={squawkSeverity}
+              onChange={(e) => setSquawkSeverity(e.target.value as AircraftRemark["severity"])}
+            >
+              <option value="info">Info / Cabin Observation</option>
+              <option value="warning">Warning / Deferred MEL</option>
+              <option value="grounding_defect">Grounding Defect (Auto-AOG)</option>
+            </NativeSelect>
+          </Field>
+          <Field label="Squawk / Defect Description">
+            <Input
+              placeholder="e.g. LH magneto drop 175 RPM during run-up"
+              value={squawkDesc}
+              onChange={(e) => setSquawkDesc(e.target.value)}
+              required
+            />
+          </Field>
+          <div className="flex items-end">
+            <Button type="submit" size="sm" className="w-full">
+              <Plus className="mr-1 h-4 w-4" /> Log Squawk
+            </Button>
+          </div>
+        </form>
+
+        {can.manageFleet(me.role) && (
+          <div className="mb-4 grid gap-3 rounded-xl border border-primary/30 bg-primary/5 p-3 sm:grid-cols-2">
+            <Field label="CAMO / AME Certifying License # (for CRS Sign-Off)">
+              <Input value={crsLicense} onChange={(e) => setCrsLicense(e.target.value)} />
+            </Field>
+            <Field label="Rectification & Work Order Statement">
+              <Input value={crsNotes} onChange={(e) => setCrsNotes(e.target.value)} />
+            </Field>
+          </div>
+        )}
+
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Aircraft</TableHead>
+              <TableHead>Severity</TableHead>
+              <TableHead>Defect & CRS Rectification</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {(data.aircraftRemarks ?? []).map((rem) => {
+              const ac = lk.aircraft(rem.aircraftId);
+              return (
+                <TableRow key={rem.id}>
+                  <TableCell className="font-semibold">{ac?.reg ?? rem.aircraftId}</TableCell>
+                  <TableCell>
+                    <Chip
+                      tone={
+                        rem.severity === "grounding_defect"
+                          ? "expired"
+                          : rem.severity === "warning"
+                            ? "soon"
+                            : "ok"
+                      }
+                    >
+                      {rem.severity.replace("_", " ").toUpperCase()}
+                    </Chip>
+                  </TableCell>
+                  <TableCell>
+                    <div className="font-medium text-xs">{rem.description}</div>
+                    {rem.rectifiedByLicense && (
+                      <div className="mt-1 text-[11px] text-emerald-500">
+                        CRS Signed ({rem.rectifiedByLicense} · {rem.workOrderRef}):{" "}
+                        {rem.rectificationNotes}
+                      </div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Chip tone={rem.status === "rectified" ? "ok" : "soon"}>
+                      {rem.status.toUpperCase()}
+                    </Chip>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {rem.status !== "rectified" && can.manageFleet(me.role) && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleResolveSquawk(rem.id)}
+                      >
+                        <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Issue CRS
                       </Button>
                     )}
                   </TableCell>

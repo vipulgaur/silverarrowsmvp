@@ -32,6 +32,7 @@ import { Chip, PageHeader, Section, Stat } from "@/components/app-ui";
 import { useLookup, useMe } from "@/lib/store";
 import { BookingApprovals } from "@/components/booking-approvals";
 import { ProfileRequests } from "@/components/profile-requests";
+import { ApprovalAuditTrail } from "@/components/approval-audit-trail";
 import {
   getPostFlightDueBookings,
   PostFlightCompletionDialog,
@@ -67,7 +68,7 @@ export const Route = createFileRoute("/_shell/admin/approvals")({
 function AdminApprovalsPage() {
   const { data, me, commit, log } = useMe();
   const lk = useLookup();
-  const [activeTab, setActiveTab] = useState<"all" | "flights" | "accounts" | "profiles">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "flights" | "accounts" | "profiles" | "audit">("all");
   const [postFlightDialogState, setPostFlightDialogState] =
     useState<PostFlightDialogState | null>(null);
 
@@ -99,10 +100,14 @@ function AdminApprovalsPage() {
       "post_flight_confirmed_yes",
       "post_flight_confirmed_no",
       "flight_logged",
+      "flight_submitted",
       "flight_verified",
       "flight_rejected",
+      "booking_requested",
+      "booking_scheduled",
       "booking_approved",
       "booking_declined",
+      "reschedule_requested",
       "reschedule_approved_override",
       "reschedule_declined_override",
     ].includes(a.action),
@@ -309,6 +314,18 @@ function AdminApprovalsPage() {
               {profilesPendingTotal}
             </span>
           </TabsTrigger>
+
+          <TabsTrigger
+            value="audit"
+            data-testid="tab-approvals-audit"
+            className="gap-2 text-xs font-bold px-3.5 py-2 rounded-xl"
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            <span>Audit Trail</span>
+            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 font-mono text-[10px] text-emerald-600 dark:text-emerald-400">
+              {data.activity.length}
+            </span>
+          </TabsTrigger>
         </TabsList>
 
         {/* ════════════════════ TAB 1: ALL APPROVALS & NOTIFICATIONS ════════════════════ */}
@@ -448,6 +465,9 @@ function AdminApprovalsPage() {
 
           {/* Profile Change Approvals */}
           <ProfileRequests review />
+
+          {/* Chronological Audit Trail of all approval actions */}
+          <ApprovalAuditTrail data={data} currentUser={me} />
         </TabsContent>
 
         {/* ════════════════════ TAB 2: {FLIGHTS} — FLIGHT HAPPENED & FLIGHT APPROVALS ════════════════════ */}
@@ -658,6 +678,8 @@ function AdminApprovalsPage() {
               </div>
             )}
           </Section>
+
+          <ApprovalAuditTrail data={data} currentUser={me} initialCategory="flights" />
         </TabsContent>
 
         {/* ════════════════════ TAB 3: {ACCOUNTS} — NEW ACCOUNT APPROVALS & TRACKING ════════════════════ */}
@@ -796,38 +818,7 @@ function AdminApprovalsPage() {
             </Table>
           </Section>
 
-          <Section
-            title={`3. Account Registration & Approval Audit Trail (${accountActivities.length + accountNotifs.length})`}
-            description="Chronological record of account creations, login approvals, and declines."
-          >
-            {accountActivities.length === 0 ? (
-              <p className="text-xs text-muted-foreground py-2">
-                No account approval audit entries recorded yet.
-              </p>
-            ) : (
-              <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-                {accountActivities.map((a) => (
-                  <div
-                    key={a.id}
-                    className="flex items-start justify-between gap-3 rounded-xl border border-border/80 bg-card/60 p-3 text-xs"
-                  >
-                    <div className="space-y-0.5">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-[10px] uppercase font-bold text-primary">
-                          {a.action.replace(/_/g, " ")}
-                        </span>
-                        <span className="text-muted-foreground">by {a.actorName}</span>
-                      </div>
-                      <p className="text-foreground">{a.details}</p>
-                    </div>
-                    <span className="font-mono text-[10px] text-muted-foreground shrink-0">
-                      {format(new Date(a.at), "dd MMM HH:mm")}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Section>
+          <ApprovalAuditTrail data={data} currentUser={me} initialCategory="accounts" />
         </TabsContent>
 
         {/* ════════════════════ TAB 4: {PROFILES} — PROFILE & OPERATIONS APPROVALS ════════════════════ */}
@@ -876,6 +867,11 @@ function AdminApprovalsPage() {
               </div>
             )}
           </Section>
+        </TabsContent>
+
+        {/* ════════════════════ TAB 5: AUDIT TRAIL — CHRONOLOGICAL APPROVAL HISTORY ════════════════════ */}
+        <TabsContent value="audit" className="space-y-6">
+          <ApprovalAuditTrail data={data} currentUser={me} />
         </TabsContent>
       </Tabs>
 

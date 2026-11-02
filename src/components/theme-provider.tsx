@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { isTestEnv } from "@/integrations/supabase/client";
 import { useStore } from "@/lib/store";
 
 export type ThemeMode = "light" | "dark";
@@ -61,13 +62,26 @@ function resolveInitialAppearance(): { theme: ThemeMode; colorTheme: ColorTheme 
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setThemeState] = useState<ThemeMode>(() => resolveInitialAppearance().theme);
-  const [colorTheme, setColorThemeState] = useState<ColorTheme>(
-    () => resolveInitialAppearance().colorTheme,
+  const [theme, setThemeState] = useState<ThemeMode>(() =>
+    isTestEnv ? resolveInitialAppearance().theme : "light",
   );
+  const [colorTheme, setColorThemeState] = useState<ColorTheme>(() =>
+    isTestEnv ? resolveInitialAppearance().colorTheme : "blue",
+  );
+  const [mounted, setMounted] = useState(isTestEnv);
   const { log } = useStore();
 
   useEffect(() => {
+    if (!isTestEnv) {
+      const initial = resolveInitialAppearance();
+      setThemeState(initial.theme);
+      setColorThemeState(initial.colorTheme);
+      setMounted(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
     document.documentElement.classList.toggle("dark", theme === "dark");
     document.documentElement.style.colorScheme = theme;
     document.documentElement.setAttribute("data-color-theme", colorTheme);
@@ -78,7 +92,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     } catch {
       // Guarded browser storage
     }
-  }, [theme, colorTheme]);
+  }, [theme, colorTheme, mounted]);
 
   function setTheme(t: ThemeMode) {
     setThemeState(t);
