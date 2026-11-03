@@ -46,16 +46,6 @@ import {
 } from "@/lib/elearning-courses";
 import { roleLabel } from "@/lib/types";
 import { APP_BUILD_HASH } from "@/lib/build-info";
-import {
-  ELearningDevWorkspacePanel,
-  type InspectChangePayload,
-} from "@/elearning/dev-workspace-panel";
-import {
-  ELEARNING_BRANCH_LOCK,
-  PARTH_EMAIL,
-  isElearningLockedSession,
-  isParthUser,
-} from "@/elearning/workspace-config";
 
 export const Route = createFileRoute("/elearning")({
   head: () => ({
@@ -76,16 +66,7 @@ export const Route = createFileRoute("/elearning")({
 });
 
 const QUICK_ELEARNING_USERS = [
-  {
-    label: "System Administrator (Vipul)",
-    role: "Administrator · Full Access (FlightLogger + E-Learning)",
-    email: "admin@flysilverarrows.com",
-  },
-  {
-    label: "Parth Bhatt (E-Learning Dev)",
-    role: "E-Learning Developer · E-Learning Only (FlightLogger Locked)",
-    email: PARTH_EMAIL,
-  },
+  { label: "System Administrator", role: "Administrator (Sole Admin)", email: "admin@flysilverarrows.com" },
   { label: "Vipul Aviation", role: "Chief CFI (VPL)", email: "vipul@flysilverarrows.com" },
   { label: "Priya Nair", role: "Flight Instructor (CFI)", email: "priya@flysilverarrows.com" },
   { label: "Anujay Singh", role: "Ground Instructor", email: "anujay@flysilverarrows.com" },
@@ -98,8 +79,6 @@ function ELearningPage() {
 
   // Active course reader state: null = course catalogue, "pooley" = Air Manual reader, "airlaw" = Air Law syllabus
   const [activeCourse, setActiveCourse] = useState<CourseId | null>(null);
-  const [activeInitialChapter, setActiveInitialChapter] = useState<string>("chapter-01");
-  const [inspectingChange, setInspectingChange] = useState<InspectChangePayload | null>(null);
 
   // Assignment Modal states (Admin only)
   const [assignModalOpen, setAssignModalOpen] = useState(false);
@@ -115,15 +94,11 @@ function ELearningPage() {
   const [unassigningBusy, setUnassigningBusy] = useState(false);
 
   // Unified E-Learning sign-in states
-  const [loginEmail, setLoginEmail] = useState(
-    ELEARNING_BRANCH_LOCK ? PARTH_EMAIL : "admin@flysilverarrows.com",
-  );
+  const [loginEmail, setLoginEmail] = useState("admin@flysilverarrows.com");
   const [loginPassword, setLoginPassword] = useState("Vipul@1011");
   const [loginBusy, setLoginBusy] = useState(false);
 
   const isAdmin = me?.role === "admin";
-  const isLockedToElearning = isElearningLockedSession(me);
-  const isParth = isParthUser(me);
 
   // Filter candidates: all active non-admin people (students, flight instructors, ground instructors)
   const candidates = data.users.filter(
@@ -136,30 +111,15 @@ function ELearningPage() {
           .includes(candidateSearch.toLowerCase())),
   );
 
-  const handleLaunchModule = (moduleId: CourseId, chapterId = "chapter-01") => {
+  const handleLaunchModule = (moduleId: CourseId) => {
     const mod = ELEARNING_MODULES.find((m) => m.id === moduleId);
     log(
       "elearning_module_opened",
       "lesson",
-      `Opened E-Learning module "${mod?.title ?? moduleId}" (${chapterId})`,
+      `Opened E-Learning module "${mod?.title ?? moduleId}"`,
       moduleId,
     );
-    setInspectingChange(null);
-    setActiveInitialChapter(chapterId);
     setActiveCourse(moduleId);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleInspectChangeInUi = (payload: InspectChangePayload) => {
-    log(
-      "elearning_change_inspected",
-      "lesson",
-      `Inspecting Parth Bhatt's E-Learning changes for ${payload.task.id} (${payload.task.courseTitle} · ${payload.chapterId})`,
-      payload.task.id,
-    );
-    setInspectingChange(payload);
-    setActiveInitialChapter(payload.chapterId);
-    setActiveCourse(payload.courseId);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -300,26 +260,9 @@ function ELearningPage() {
       {/* Top Title Bar: Logo, long space, then member name, theme & log out */}
       <header className="sticky top-0 z-50 border-b border-border/80 bg-background/85 px-6 py-3 backdrop-blur-md">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4">
-          {isLockedToElearning ? (
-            <button
-              type="button"
-              onClick={() => {
-                setInspectingChange(null);
-                setActiveCourse(null);
-              }}
-              className="shrink-0 transition hover:opacity-90 cursor-pointer flex items-center gap-3"
-              title="SilverArrows E-Learning Workspace (FlightLogger Locked)"
-            >
-              <BrandLogo className="h-14 w-[120px]" />
-              <span className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-[11px] font-bold text-primary">
-                <Lock className="h-3 w-3" /> E-Learning Only Workspace
-              </span>
-            </button>
-          ) : (
-            <Link to="/" className="shrink-0 transition hover:opacity-90">
-              <BrandLogo className="h-14 w-[120px]" />
-            </Link>
-          )}
+          <Link to="/" className="shrink-0 transition hover:opacity-90">
+            <BrandLogo className="h-14 w-[120px]" />
+          </Link>
 
           <div className="flex-1" />
 
@@ -331,44 +274,16 @@ function ELearningPage() {
                 </span>
                 <span className="font-semibold">{me.name}</span>
                 <span className="hidden sm:inline text-muted-foreground">
-                  · {isParth ? "E-Learning Developer (E-Learning Only)" : roleLabel[me.role]}
+                  · {roleLabel[me.role]}
                 </span>
               </div>
             )}
-
-            {/* When signed in as Parth on main branch, allow Vipul to switch back to Admin with 1 click */}
-            {isParth && !ELEARNING_BRANCH_LOCK && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => void signInWithCredentials("admin@flysilverarrows.com", "Vipul@1011")}
-                data-testid="btn-switch-back-to-vipul"
-                className="h-9 rounded-full px-3.5 text-xs font-bold border-primary/50 text-primary hover:bg-primary hover:text-primary-foreground whitespace-nowrap"
-              >
-                <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                Switch to Vipul (Admin)
-              </Button>
-            )}
-
-            {/* When signed in as Admin (Vipul), allow direct 1-click jump to FlightLogger Portal */}
-            {isAdmin && !isLockedToElearning && (
-              <Button
-                asChild
-                variant="outline"
-                size="sm"
-                className="hidden sm:inline-flex h-9 rounded-full px-3.5 text-xs font-semibold whitespace-nowrap"
-              >
-                <Link to="/portal/admin">Open FlightLogger OS →</Link>
-              </Button>
-            )}
-
             <ThemeToggle />
             {me ? (
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  setInspectingChange(null);
                   setActiveCourse(null);
                   void signOut();
                 }}
@@ -377,7 +292,7 @@ function ELearningPage() {
                 <LogOut className="h-3.5 w-3.5 sm:mr-1.5" />
                 <span className="hidden sm:inline">Sign Out</span>
               </Button>
-            ) : !ELEARNING_BRANCH_LOCK ? (
+            ) : (
               <Button
                 asChild
                 variant="outline"
@@ -389,7 +304,7 @@ function ELearningPage() {
                   Home
                 </Link>
               </Button>
-            ) : null}
+            )}
           </div>
         </div>
       </header>
@@ -451,15 +366,10 @@ function ELearningPage() {
 
               <div className="mt-6 border-t border-border pt-4">
                 <p className="mb-2.5 text-xs font-semibold text-muted-foreground">
-                  {ELEARNING_BRANCH_LOCK
-                    ? "E-Learning Developer Sign-In (Parth Bhatt — FlightLogger Locked):"
-                    : "Quick Sign-In (Vipul Admin vs. Parth Bhatt E-Learning Only & Academy Users):"}
+                  Quick Demo Sign-In (Unified Academy Users):
                 </p>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {(ELEARNING_BRANCH_LOCK
-                    ? QUICK_ELEARNING_USERS.filter((u) => u.email === PARTH_EMAIL)
-                    : QUICK_ELEARNING_USERS
-                  ).map((item) => (
+                  {QUICK_ELEARNING_USERS.map((item) => (
                     <button
                       key={item.email}
                       type="button"
@@ -469,11 +379,7 @@ function ELearningPage() {
                         setLoginPassword("Vipul@1011");
                         void signInWithCredentials(item.email, "Vipul@1011");
                       }}
-                      className={`flex flex-col items-start rounded-xl border px-3 py-2 text-left text-xs transition ${
-                        item.email === PARTH_EMAIL
-                          ? "border-primary/50 bg-primary/5 hover:bg-primary/10"
-                          : "border-border bg-background hover:border-primary/60 hover:bg-accent/40"
-                      }`}
+                      className="flex flex-col items-start rounded-xl border border-border bg-background px-3 py-2 text-left text-xs transition hover:border-primary/60 hover:bg-accent/40"
                     >
                       <span className="font-semibold text-foreground">{item.label}</span>
                       <span className="text-[11px] text-muted-foreground">{item.role}</span>
@@ -484,172 +390,52 @@ function ELearningPage() {
             </div>
           </div>
         ) : activeCourse ? (
-          /* 2. Active Course Reader (Pooley, Air Law, Airframes, Electrics, or Powerplant) */
-          <div className="space-y-6">
-            {inspectingChange && (
-              <div
-                data-testid="visual-ui-change-inspector-banner"
-                className="rounded-3xl border-2 border-primary bg-primary/5 p-5 sm:p-6 shadow-md space-y-4"
-              >
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-primary/20 pb-3">
-                  <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-primary px-3 py-0.5 text-[11px] font-bold text-primary-foreground">
-                        LIVE UI CHANGE INSPECTOR
-                      </span>
-                      <span className="font-mono text-xs font-bold text-primary">
-                        {inspectingChange.task.id}
-                      </span>
-                      {inspectingChange.report && (
-                        <span className="rounded bg-card px-2 py-0.5 font-mono text-[11px] border border-border">
-                          Commit: {inspectingChange.report.commitHash} · Branch:{" "}
-                          {inspectingChange.report.branch}
-                        </span>
-                      )}
-                    </div>
-                    <h2 className="text-lg font-extrabold text-foreground">
-                      {inspectingChange.task.title}
-                    </h2>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      setInspectingChange(null);
-                      setActiveCourse(null);
-                    }}
-                    className="rounded-full text-xs font-bold"
-                  >
-                    <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
-                    Back to Parth&apos;s Activity Report
-                  </Button>
-                </div>
-
-                {inspectingChange.report ? (
-                  <div className="grid gap-4 md:grid-cols-2 text-xs">
-                    <div className="rounded-2xl border border-border bg-card p-4 space-y-1.5">
-                      <span className="font-bold uppercase tracking-wider text-muted-foreground">
-                        Before Parth&apos;s Change
-                      </span>
-                      <p className="text-muted-foreground leading-relaxed">
-                        {inspectingChange.report.uiPreview.beforeSummary}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-1.5">
-                      <span className="font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
-                        After Parth&apos;s Change (Live Below in Reader)
-                      </span>
-                      <p className="text-foreground font-medium leading-relaxed">
-                        {inspectingChange.report.uiPreview.afterSummary}
-                      </p>
-                      <ul className="space-y-1 pt-1 text-foreground/90">
-                        {inspectingChange.report.changesMade.map((c, i) => (
-                          <li key={i} className="flex items-start gap-1.5">
-                            <span className="text-emerald-600 font-bold">✓</span>
-                            <span>{c}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-4 md:grid-cols-2 text-xs">
-                    <div className="rounded-2xl border border-emerald-500/40 bg-emerald-500/10 p-4 space-y-1">
-                      <span className="font-bold uppercase text-emerald-700 dark:text-emerald-400">
-                        What Needs To Be Done:
-                      </span>
-                      <ul className="space-y-1">
-                        {inspectingChange.task.whatToDo.map((d, i) => (
-                          <li key={i}>• {d}</li>
-                        ))}
-                      </ul>
-                    </div>
-                    <div className="rounded-2xl border border-destructive/40 bg-destructive/10 p-4 space-y-1">
-                      <span className="font-bold uppercase text-destructive">
-                        What NOT To Do:
-                      </span>
-                      <ul className="space-y-1">
-                        {inspectingChange.task.whatNotToDo.map((d, i) => (
-                          <li key={i}>• {d}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            <CourseReaderView
-              courseId={activeCourse}
-              initialChapterId={activeInitialChapter}
-              onBack={() => {
-                setInspectingChange(null);
-                setActiveCourse(null);
-              }}
-              backLabel={
-                isAdmin ? "Back to All E-Learning Modules" : "Back to My Assigned Courses"
-              }
-            />
-          </div>
+          /* 2. Active Course Reader (Pooley or Air Law) */
+          <CourseReaderView
+            courseId={activeCourse}
+            onBack={() => setActiveCourse(null)}
+            backLabel={isAdmin ? "Back to All E-Learning Modules" : "Back to My Assigned Courses"}
+          />
         ) : !isAdmin ? (
-          /* 3. Non-Admin Signed In (Parth Bhatt E-Learning Dev, Student, CFI, Ground Instructor): View Assigned Tasks & Courses */
-          <div className="space-y-8">
+          /* 3. Non-Admin Signed In (Student, CFI, Ground Instructor): View Their Assigned Courses */
+          <div className="space-y-6">
             <div>
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary-ink">
                 <GraduationCap className="h-3.5 w-3.5" />
                 <span>
-                  {me.name} ·{" "}
-                  {isParth
-                    ? "E-Learning Developer (E-Learning Only — FlightLogger Locked)"
-                    : roleLabel[me.role]}
+                  {me.name} · {roleLabel[me.role]}
                 </span>
               </div>
               <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-                {isParth
-                  ? "Parth Bhatt — E-Learning Developer Workspace"
-                  : "My Assigned E-Learning Courses"}
+                My Assigned E-Learning Courses
               </h1>
               <p className="mt-2 text-sm text-muted-foreground max-w-3xl">
-                {isParth
-                  ? "Your account has access exclusively to SilverArrows E-Learning modules assigned by Vipul. Review Vipul's instructions below, work on your assigned E-Learning modules, and submit your work report before pushing to origin/parthbhatt."
-                  : "Showing the E-Learning training modules assigned to your profile by the academy administrator. Select any assigned course below to open the interactive reader."}
+                Showing the E-Learning training modules assigned to your profile by the academy
+                administrator. Select any assigned course below to open the interactive reader.
               </p>
             </div>
-
-            {isParth && (
-              <ELearningDevWorkspacePanel
-                onInspectChangeInUi={handleInspectChangeInUi}
-                onSwitchUser={(email) => void signInWithCredentials(email, "Vipul@1011")}
-              />
-            )}
 
             <AssignedCoursesPanel person={me} />
           </div>
         ) : (
-          /* 4. Admin Signed In (Vipul): View Parth Bhatt Dev Control Panel + Total Courses & Direct Assign / Unassign Buttons */
+          /* 4. Admin Signed In: View Total Courses & Direct Assign / Unassign Buttons */
           <div className="space-y-8">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <div>
                 <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                   <ShieldCheck className="h-3.5 w-3.5" />
-                  <span>Administrator Authenticated (Vipul) · Full Dual Access Active</span>
+                  <span>Administrator Authenticated · Course Management Active</span>
                 </div>
                 <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-                  Total Aviation E-Learning Courses &amp; Developer Control
+                  Total Aviation E-Learning Courses
                 </h1>
                 <p className="mt-2 text-sm sm:text-base text-muted-foreground max-w-3xl">
-                  As administrator, you have full authority over both FlightLogger and E-Learning.
-                  Instruct Parth Bhatt on E-Learning tasks below, inspect his UI changes, and
-                  assign or unassign training modules across the academy.
+                  As an administrator, you have full authority to assign or unassign academy
+                  training modules. Candidates only see the specific courses assigned to them inside
+                  their individual E-Learning view and profile.
                 </p>
               </div>
             </div>
-
-            {/* VIPUL'S INSTRUCTION, TASK ASSIGNMENT & CHANGE REPORT PANEL FOR PARTH BHATT */}
-            <ELearningDevWorkspacePanel
-              onInspectChangeInUi={handleInspectChangeInUi}
-              onSwitchUser={(email) => void signInWithCredentials(email, "Vipul@1011")}
-            />
 
             {/* SINGLE COLUMN LONG BARS FOR EACH MODULE */}
             <div className="flex flex-col gap-6">

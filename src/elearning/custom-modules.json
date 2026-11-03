@@ -1,5 +1,0 @@
-{
-  "schemaVersion": 1,
-  "description": "Parth Bhatt can add new E-Learning modules here (or in src/lib/elearning-courses.ts + src/lib/<module>-content.ts). Any module added here and pushed to branch 'parthbhatt' appears automatically on Vipul's E-Learning dashboard upon refresh.",
-  "modules": []
-}

@@ -976,37 +976,6 @@ export const homeFor: Record<Role, string> = {
   renter: "/portal/student",
 };
 
-/**
- * Returns true if the given user is restricted to E-Learning Only (Parth Bhatt or E-Learning branch lock).
- */
-export function isElearningOnlyUser(
-  user?: Pick<User, "id" | "email" | "name"> | null,
-): boolean {
-  if (
-    typeof import.meta !== "undefined" &&
-    import.meta.env?.VITE_ELEARNING_ONLY_MODE === "true"
-  ) {
-    return true;
-  }
-  if (!user) return false;
-  if (user.id === "u-parth") return true;
-  const email = (user.email ?? "").trim().toLowerCase();
-  return (
-    email === "parth@flysilverarrows.com" ||
-    email === "parth.bhatt@flysilverarrows.com" ||
-    email.startsWith("parth@") ||
-    email.startsWith("parth.")
-  );
-}
-
-export function homeForUser(
-  user?: Pick<User, "id" | "email" | "name" | "role"> | null,
-): string {
-  if (!user) return "/elearning";
-  if (isElearningOnlyUser(user)) return "/elearning";
-  return homeFor[user.role] ?? "/portal/student";
-}
-
 const access: Record<Role, string[]> = {
   admin: ["*"],
   staff: [
@@ -1097,19 +1066,7 @@ const access: Record<Role, string[]> = {
 };
 
 /** Route-level RBAC. "/people/" prefix grants detail pages only (students see their own). */
-export function canAccess(
-  role: Role,
-  path: string,
-  user?: Pick<User, "id" | "email" | "name"> | null,
-): boolean {
-  if (isElearningOnlyUser(user)) {
-    return (
-      path === "/elearning" ||
-      path.startsWith("/elearning/") ||
-      path === "/learning" ||
-      path.startsWith("/learning/")
-    );
-  }
+export function canAccess(role: Role, path: string): boolean {
   const allowed = access[role] ?? access.student;
   if (allowed.includes("*")) return true;
   return allowed.some((p) =>

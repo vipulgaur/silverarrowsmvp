@@ -49,8 +49,6 @@ import {
   canAccess,
   declineUserLogin,
   homeFor,
-  homeForUser,
-  isElearningOnlyUser,
   isUserPendingApproval,
   memberNotifications,
 } from "@/lib/logic";
@@ -145,14 +143,6 @@ function ShellLayout() {
     prevUnreadIdsRef.current = currentIds;
   }, [hydrated, notifs, me, navigate, markOneRead]);
 
-  // If Parth Bhatt (or E-Learning Only mode) lands on any non-E-Learning route in _shell, redirect immediately to /elearning
-  useEffect(() => {
-    if (!hydrated) return;
-    if (isElearningOnlyUser(me) && !canAccess(me?.role ?? "ground", location.pathname, me)) {
-      void navigate({ to: "/elearning", replace: true });
-    }
-  }, [hydrated, me, location.pathname, navigate]);
-
   if (!hydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background text-foreground">
@@ -236,8 +226,7 @@ function ShellLayout() {
   }
 
   const path = location.pathname;
-  const isParthElearningOnly = isElearningOnlyUser(me);
-  const hasAccess = canAccess(me.role, path, me);
+  const hasAccess = canAccess(me.role, path);
 
   if (!hasAccess) {
     return (
@@ -253,22 +242,18 @@ function ShellLayout() {
             <ShieldAlert className="mx-auto h-12 w-12 text-destructive" />
             <h1 className="mt-4 text-2xl font-bold">403 — ACCESS DENIED</h1>
             <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
-              {isParthElearningOnly
-                ? "Your account (Parth Bhatt) is restricted exclusively to SilverArrows E-Learning. FlightLogger Operations OS access is locked."
-                : `This area isn't part of your portal (${roleLabel[me.role]}).`}
+              This area isn&apos;t part of your portal ({roleLabel[me.role]}).
             </p>
             <div className="mt-6 flex flex-col gap-2">
               <Button asChild>
-                <Link to={homeForUser(me) as never}>
-                  {isParthElearningOnly ? "Return to E-Learning Workspace" : "Return to My Home Portal"}
-                </Link>
+                <Link to={homeFor[me.role] as never}>Return to My Home Portal</Link>
               </Button>
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => {
                   void signOut();
-                  void navigate({ to: isParthElearningOnly ? "/elearning" : "/login" });
+                  void navigate({ to: "/login" });
                 }}
               >
                 <LogOut className="mr-1.5 h-3.5 w-3.5" /> Sign Out
@@ -461,12 +446,8 @@ function ShellLayout() {
   ];
 
   // Non-admin flat role items (Sections 2.2, 2.3, 2.4)
-  const flatRoleItems: NavMenuItem[] = isParthElearningOnly
-    ? [
-        { to: "/elearning", label: "E-Learning Developer Hub", icon: GraduationCap },
-        { to: "/learning", label: "Assigned E-Learning Courses", icon: BookOpen },
-      ]
-    : me.role === "instructor"
+  const flatRoleItems: NavMenuItem[] =
+    me.role === "instructor"
       ? [
           {
             to: "/portal/cfi",
@@ -521,7 +502,7 @@ function ShellLayout() {
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center justify-between gap-2.5 sm:gap-4">
           {/* Top-Left Corner: Brand Logo + Non-Stopping Authoritative IST Live 24h Clock */}
           <div className="flex flex-wrap items-center gap-4 sm:gap-6 lg:gap-7 min-w-0">
-            <Link to={homeForUser(me) as never} className="shrink-0 transition hover:opacity-90">
+            <Link to={homeFor[me.role] as never} className="shrink-0 transition hover:opacity-90">
               <BrandLogo className="h-10 sm:h-12" />
             </Link>
             <div className="hidden sm:block h-6 w-px bg-border/80 shrink-0" aria-hidden="true" />
@@ -1018,20 +999,18 @@ function ShellLayout() {
             aria-label="Main navigation"
             className="flex w-full items-center justify-between gap-1.5 sm:gap-2 overflow-x-auto rounded-2xl sm:rounded-full border border-white/20 bg-sidebar/55 p-1.5 text-xs sm:text-sm font-medium text-sidebar-foreground shadow-lg ring-1 ring-white/10 backdrop-blur-xl"
           >
-            {/* 1. First item is "Dashboard" linking to /dashboard (Hidden for E-Learning Only / Parth Bhatt) */}
-            {!isParthElearningOnly && (
-              <Link
-                to="/dashboard"
-                className={`flex flex-1 shrink-0 items-center justify-center gap-1.5 sm:gap-2 rounded-full border px-3 sm:px-4 py-1.5 sm:py-2 whitespace-nowrap transition-all duration-200 ${
-                  isDashboardActive
-                    ? "border-primary bg-primary text-primary-foreground font-semibold shadow-sm hover:bg-primary/90"
-                    : "border-white/15 bg-card/90 text-foreground font-medium shadow-xs hover:border-primary hover:bg-primary hover:text-primary-foreground"
-                }`}
-              >
-                <LayoutDashboard className="h-4 w-4 shrink-0" />
-                <span>Dashboard</span>
-              </Link>
-            )}
+            {/* 1. First item is always "Dashboard" linking to /dashboard */}
+            <Link
+              to="/dashboard"
+              className={`flex flex-1 shrink-0 items-center justify-center gap-1.5 sm:gap-2 rounded-full border px-3 sm:px-4 py-1.5 sm:py-2 whitespace-nowrap transition-all duration-200 ${
+                isDashboardActive
+                  ? "border-primary bg-primary text-primary-foreground font-semibold shadow-sm hover:bg-primary/90"
+                  : "border-white/15 bg-card/90 text-foreground font-medium shadow-xs hover:border-primary hover:bg-primary hover:text-primary-foreground"
+              }`}
+            >
+              <LayoutDashboard className="h-4 w-4 shrink-0" />
+              <span>Dashboard</span>
+            </Link>
 
             {/* 2. Role-specific items: 3 Dropdown Groups for Admin, or Direct Flat Pills for Non-Admin */}
             {me.role === "admin"
@@ -1104,7 +1083,7 @@ function ShellLayout() {
                   );
                 })
               : flatRoleItems
-                  .filter((item) => item.to === "/elearning" || canAccess(me.role, item.to, me))
+                  .filter((item) => canAccess(me.role, item.to))
                   .map((item) => {
                     const Icon = item.icon;
                     const itemActive = isRouteMatch(path, item.to);

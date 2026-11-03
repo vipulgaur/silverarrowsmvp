@@ -13,6 +13,10 @@ RUN npm install --no-audit --no-fund
 # Copy application source code
 COPY . .
 
+# Pass Cloud Build commit SHA for build hash resolution
+ARG COMMIT_SHA
+ENV COMMIT_SHA=$COMMIT_SHA
+
 # Build the production server bundle (outputs to .output/)
 ENV NODE_ENV=production
 RUN npm run build

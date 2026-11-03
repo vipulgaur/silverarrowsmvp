@@ -82,9 +82,6 @@ function inferRoleFromEmail(email: string): Role {
   if (
     lower === "anujay@flysilverarrows.com" ||
     lower === "anujay@silverarrows.aero" ||
-    lower === "parth@flysilverarrows.com" ||
-    lower === "parth.bhatt@flysilverarrows.com" ||
-    lower.startsWith("parth@") ||
     lower.startsWith("ground@")
   )
     return "ground";
@@ -96,8 +93,6 @@ const CANONICAL_TESTING_EMAILS = new Set([
   "vipul@flysilverarrows.com",
   "priya@flysilverarrows.com",
   "anujay@flysilverarrows.com",
-  "parth@flysilverarrows.com",
-  "parth.bhatt@flysilverarrows.com",
   "ananya@flysilverarrows.com",
   "aarav@flysilverarrows.com",
   "liam@flysilverarrows.com",
@@ -117,28 +112,21 @@ export function findOrCreateLocalUser(
   );
   if (existing) return existing;
 
-  const isParth =
-    clean === "parth@flysilverarrows.com" ||
-    clean === "parth.bhatt@flysilverarrows.com" ||
-    clean.startsWith("parth@");
-
   const rawRole = preferredRole ?? inferRoleFromEmail(clean);
   const role: Role =
     clean === SOLE_ADMIN_EMAIL ? "admin" : rawRole === "admin" ? "student" : rawRole;
   const effectiveStatusReason =
-    clean === SOLE_ADMIN_EMAIL || CANONICAL_TESTING_EMAILS.has(clean) || isParth
+    clean === SOLE_ADMIN_EMAIL || CANONICAL_TESTING_EMAILS.has(clean)
       ? statusReason
       : (statusReason ?? "PENDING_ADMIN_APPROVAL");
   const localPart = clean.split("@")[0] || "pilot";
   const displayName =
     clean === SOLE_ADMIN_EMAIL
       ? "System Administrator"
-      : isParth
-        ? "Parth Bhatt"
-        : fullName?.trim() ||
-          localPart.replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+      : fullName?.trim() ||
+        localPart.replace(/[._-]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
   const newUser: User = {
-    id: clean === SOLE_ADMIN_EMAIL ? "u-admin" : isParth ? "u-parth" : `u-${uid()}`,
+    id: clean === SOLE_ADMIN_EMAIL ? "u-admin" : `u-${uid()}`,
     name: displayName,
     email: clean,
     role,

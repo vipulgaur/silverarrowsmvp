@@ -40,7 +40,6 @@ import {
   validateAccountCreation,
   validateLiveUsernameAndPhone,
 } from "@/lib/logic";
-import { isElearningLockedSession, isParthUser } from "@/elearning/workspace-config";
 import {
   ACADEMY_EMAIL_SUFFIX,
   DEFAULT_ISD_CODE,
@@ -1325,13 +1324,6 @@ function LoginPage() {
   const { data, me, hydrated, noAccess, signOut, reload } = useStore();
   const navigate = useNavigate();
 
-  // Enforce E-Learning-only lockout: Parth Bhatt or parthbhatt branch cannot access FlightLogger /login
-  useEffect(() => {
-    if (isElearningLockedSession(me)) {
-      void navigate({ to: "/elearning", replace: true });
-    }
-  }, [me, navigate]);
-
   // Mode: "signin" | "signup"
   const [mode, setMode] = useState<"signin" | "signup">("signin");
 
@@ -1401,14 +1393,7 @@ function LoginPage() {
     return TESTING_USERS.find((p) => p.email.toLowerCase() === clean) ?? null;
   }, [selectedPersonaId, email]);
 
-  function navigateForEmail(targetEmail = email) {
-    if (isParthUser({ email: targetEmail })) {
-      toast.info(
-        "Parth Bhatt account is scoped to E-Learning Only — redirecting to E-Learning Workspace.",
-      );
-      void navigate({ to: "/elearning", replace: true });
-      return;
-    }
+  function navigateForEmail() {
     void navigate({ to: "/dashboard" });
   }
 
@@ -1584,7 +1569,7 @@ function LoginPage() {
           return;
         }
         toast.success(`Signed in successfully as ${signInData.user?.email || clean}!`);
-        navigateForEmail(clean);
+        navigateForEmail();
       }
       return;
     }
