@@ -34,9 +34,9 @@ steps:
       - '--allow-unauthenticated'
 
 substitutions:
-  _SERVICE_NAME: 'silverarrows'
-  _REGION: 'us-central1'
-  _AR_LOCATION: 'us-central1'
+  _SERVICE_NAME: 'silverarrows-app'
+  _REGION: 'asia-south1'
+  _AR_LOCATION: 'asia-south1'
   _AR_REPOSITORY: 'cloud-run-source-deploy'
 
 images:
