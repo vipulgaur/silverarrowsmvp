@@ -65,8 +65,14 @@ export function enrichWithSeedDefaults(data: AppData, localSnapshot?: AppData): 
 
   const filteredInputUsers = data.users.filter((u) => {
     const emailLower = (u.email || "").trim().toLowerCase();
-    // Filter out legacy removed admin accounts or placeholder rows
-    if (emailLower === "sakshi@flysilverarrows.com" || emailLower === "sakshi@silverarrows.aero") {
+    // Filter out legacy removed accounts or placeholder rows
+    if (
+      emailLower === "sakshi@flysilverarrows.com" ||
+      emailLower === "sakshi@silverarrows.aero" ||
+      emailLower === "parth@flysilverarrows.com" ||
+      emailLower === "parth.bhatt@flysilverarrows.com" ||
+      u.id === "u-parth"
+    ) {
       return false;
     }
     return true;
@@ -257,7 +263,10 @@ export function restoreDemoData(raw: string | null | undefined): AppData {
       if (
         emailLower === "sakshi@flysilverarrows.com" ||
         emailLower === "sakshi@silverarrows.aero" ||
-        u.id === "u-demo-admin"
+        emailLower === "parth@flysilverarrows.com" ||
+        emailLower === "parth.bhatt@flysilverarrows.com" ||
+        u.id === "u-demo-admin" ||
+        u.id === "u-parth"
       ) {
         return false;
       }
@@ -314,6 +323,7 @@ export function restoreDemoData(raw: string | null | undefined): AppData {
 export function readDemoData(): { data: AppData; storageBlocked: boolean } {
   if (typeof window === "undefined") return { data: seedData(), storageBlocked: false };
   try {
+    window.localStorage.removeItem("silverarrows_elearning_dev_workspace_v1");
     const raw = window.localStorage.getItem(DEMO_STORAGE_KEY);
     return { data: restoreDemoData(raw), storageBlocked: false };
   } catch {
