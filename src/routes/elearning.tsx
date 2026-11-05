@@ -5,19 +5,15 @@ import {
   ArrowLeft,
   BookOpen,
   Check,
-  Flame,
   GraduationCap,
-  Layers,
   Lock,
   LogOut,
-  Scale,
   Search,
   ShieldCheck,
   UserMinus,
   UserPlus,
   Users,
   X,
-  Zap,
 } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -46,6 +42,21 @@ import {
 } from "@/lib/elearning-courses";
 import { roleLabel } from "@/lib/types";
 import { APP_BUILD_HASH } from "@/lib/build-info";
+import pooleyThumb from "@/assets/learning/fig-01-01.jpg";
+import airmanualThumb from "@/assets/learning/fig-01-02.jpg";
+import airframesThumb from "@/assets/learning/airframes/fig-01-01.png";
+import electricsThumb from "@/assets/learning/electrics/fig-01-01.png";
+import powerplantThumb from "@/assets/learning/powerplant/fig-01-01.png";
+import airlawThumb from "@/assets/learning/airlaw/fig-06-24.png";
+
+const MODULE_THUMBS: Record<string, string> = {
+  airmanual: airmanualThumb,
+  pooley: pooleyThumb,
+  airframes: airframesThumb,
+  electrics: electricsThumb,
+  powerplant: powerplantThumb,
+  airlaw: airlawThumb,
+};
 
 export const Route = createFileRoute("/elearning")({
   head: () => ({
@@ -420,36 +431,20 @@ function ELearningPage() {
         ) : (
           /* 4. Admin Signed In: View Total Courses & Direct Assign / Unassign Buttons */
           <div className="space-y-8">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <div className="inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  <span>Administrator Authenticated · Course Management Active</span>
-                </div>
-                <h1 className="mt-3 text-3xl font-extrabold tracking-tight sm:text-4xl">
-                  Total Aviation E-Learning Courses
-                </h1>
-                <p className="mt-2 text-sm sm:text-base text-muted-foreground max-w-3xl">
-                  As an administrator, you have full authority to assign or unassign academy
-                  training modules. Candidates only see the specific courses assigned to them inside
-                  their individual E-Learning view and profile.
-                </p>
-              </div>
+            <div className="mx-auto max-w-3xl text-center">
+              <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
+                Aviation Ground-School Course Library
+              </h1>
+              <p className="mx-auto mt-3 max-w-2xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+                Every EASA / UK ATPL and PPL theoretical-knowledge module offered by the academy,
+                in one place. Assign a module to a candidate and it appears in their personal
+                E-Learning view — complete with chapters, interactive figures, and progress tracking.
+              </p>
             </div>
 
             {/* SINGLE COLUMN LONG BARS FOR EACH MODULE */}
             <div className="flex flex-col gap-6">
               {ELEARNING_MODULES.map((mod) => {
-                const Icon =
-                  mod.id === "pooley"
-                    ? BookOpen
-                    : mod.id === "airframes"
-                      ? Layers
-                      : mod.id === "electrics"
-                        ? Zap
-                        : mod.id === "powerplant"
-                          ? Flame
-                          : Scale;
                 const assignedUsers = usersAssignedToCourse(mod.id, data);
                 return (
                   <div
@@ -458,8 +453,14 @@ function ELearningPage() {
                   >
                     {/* Left: Module Details */}
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-5 flex-1 min-w-0">
-                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary ring-1 ring-primary/30 transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                        <Icon className="h-7 w-7" />
+                      <div className="h-20 w-28 shrink-0 overflow-hidden rounded-xl border border-border bg-muted ring-1 ring-primary/20">
+                        <img
+                          src={MODULE_THUMBS[mod.id]}
+                          alt={`${mod.title} cover`}
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                          decoding="async"
+                        />
                       </div>
 
                       <div className="space-y-1.5 flex-1 min-w-0">
@@ -474,19 +475,9 @@ function ELearningPage() {
                         <p className="text-xs font-semibold uppercase tracking-wider text-primary">
                           {mod.subtitle}
                         </p>
-                        <p className="text-xs sm:text-sm text-muted-foreground leading-relaxed max-w-3xl">
+                        <p className="line-clamp-3 max-w-3xl text-justify text-xs leading-relaxed text-muted-foreground sm:text-sm">
                           {mod.description}
                         </p>
-                        <div className="flex flex-wrap gap-2 pt-1 text-xs text-muted-foreground">
-                          {mod.tags.map((tag, i) => (
-                            <span
-                              key={i}
-                              className="rounded-full border border-border bg-muted/40 px-2.5 py-0.5 font-medium text-[11px]"
-                            >
-                              ✓ {tag}
-                            </span>
-                          ))}
-                        </div>
 
                         {/* Assigned Candidates Summary Pill Bar with 1-Click Quick Unassign */}
                         <div className="pt-2 flex flex-wrap items-center gap-1.5 text-xs">

@@ -1,6 +1,6 @@
 import type { ActivityLog, AppData, Role, User } from "./types";
 
-export type CourseId = "pooley" | "airlaw" | "airframes" | "electrics" | "powerplant";
+export type CourseId = "pooley" | "airmanual" | "airlaw" | "airframes" | "electrics" | "powerplant";
 
 export interface ELearningModule {
   id: CourseId;
@@ -13,12 +13,27 @@ export interface ELearningModule {
 
 export const ELEARNING_MODULES: ELearningModule[] = [
   {
+    id: "airmanual",
+    title: "CAE ATPL 0: Air Manual",
+    subtitle: "Volume 1 · Flying Training (The Air Pilot's Manual)",
+    badge: "19 Chapters · Interactive Figures",
+    description:
+      "Objective: build the foundational airmanship and aircraft knowledge a student pilot needs before and during early flying training — aircraft familiarisation, the flight controls, taxiing, and the core airborne exercises through to navigation and instrument flying.",
+    tags: [
+      "Aircraft Familiarisation",
+      "The Flight Controls",
+      "Taxiing & Ground Handling",
+      "Core Airborne Exercises",
+      "Navigation & Instrument Flying",
+    ],
+  },
+  {
     id: "pooley",
     title: "Air Manual — Pooley",
     subtitle: "Volume 1 · Flying Training & Ground School",
     badge: "19 Chapters · Interactive Diagrams",
     description:
-      "Complete flying training manual containing all 19 course chapters. Features verbatim textbook sections and original interactive diagrams: aircraft familiarisation, pre-flight walkarounds, fuel sampling, cockpit scan horizons, and primary/secondary flight control aerodynamics.",
+      "Objective: build the practical airmanship a student pilot needs for early flight training — aircraft familiarisation, pre- and post-flight checks, the effects of the primary and secondary flight controls, and basic air-experience handling.",
     tags: [
       "Aircraft Familiarisation",
       "Pre & Post Flight Checks",
@@ -33,7 +48,7 @@ export const ELEARNING_MODULES: ELearningModule[] = [
     subtitle: "Module 5 · Subject 010 (EASA / UK ATPL)",
     badge: "28 Chapters · 240+ Illustrated Figures",
     description:
-      "Comprehensive EASA / UK ATPL Subject 010 theoretical knowledge course containing all 28 chapters. Features verbatim textbook sections and original interactive diagrams: international agreements & ICAO conventions, airworthiness, nationality & registration, flight crew licensing, rules of the air, instrument departure & approach procedures, circling & holding, altimeter setting, parallel runways, SSR & ACAS, airspace classifications A–G, ATS & radar control, separation standards, AIS, aerodromes, visual aids, aerodrome lighting, obstacle marking, facilitation, search & rescue, security, accident investigation, and EASA Part-FCL & Part-MED.",
+      "Objective: master EASA / UK ATPL Subject 010 — the international agreements, rules of the air, airspace structure, licensing, and procedures that govern how, where, and under what authority a flight may be operated.",
     tags: [
       "ICAO Framework & Treaties",
       "Rules of the Air & Collision",
@@ -49,7 +64,7 @@ export const ELEARNING_MODULES: ELearningModule[] = [
     subtitle: "Module 2 · Aircraft General Knowledge (EASA / UK ATPL)",
     badge: "16 Chapters · Interactive Hotspots",
     description:
-      "Comprehensive EASA / UK ATPL theoretical knowledge textbook covering aircraft structures, hydraulics, landing gear, flight controls, pneumatics, pressurization, ice & rain, and fuel systems. Features verbatim textbook sections and original interactive engineering diagrams with hotspot callouts.",
+      "Objective: understand how the airframe and its mechanical systems work — structures, flight controls, landing gear, hydraulics, pneumatics, pressurisation, ice and rain protection, and fuel — and how each system supports safe operation.",
     tags: [
       "Fuselage & Wings",
       "Hydraulics & Flight Controls",
@@ -64,7 +79,7 @@ export const ELEARNING_MODULES: ELearningModule[] = [
     subtitle: "Module 3 · Aircraft General Knowledge (EASA / UK ATPL)",
     badge: "17 Chapters · Interactive Diagrams",
     description:
-      "Comprehensive EASA / UK ATPL theoretical knowledge textbook covering DC principles, switches, circuit protection, batteries, magnetism, DC generators & motors, aircraft power distribution, AC principles, alternators, transformers, semiconductors, and logic gates.",
+      "Objective: understand aircraft electrical and electronic systems — DC and AC principles, batteries, generation and distribution, circuit protection, and the semiconductors and logic behind modern avionics.",
     tags: [
       "DC & AC Principles",
       "Batteries & Power Systems",
@@ -79,7 +94,7 @@ export const ELEARNING_MODULES: ELearningModule[] = [
     subtitle: "Module 4 · Aircraft General Knowledge (EASA / UK ATPL)",
     badge: "28 Chapters · Interactive Diagrams",
     description:
-      "Comprehensive EASA / UK ATPL theoretical knowledge textbook covering piston engines (Otto cycle, fuel injection, turbocharging, constant-speed propellers) and gas turbines (Brayton cycle, compressors, combustors, turbines, thrust reversers, FADEC, bleed air).",
+      "Objective: understand how aircraft powerplants produce and control thrust — piston engines and the Otto cycle, propellers, and gas turbines and the Brayton cycle, including their core systems and operating limits.",
     tags: [
       "Piston Engines & Otto Cycle",
       "Carburettors & Fuel Injection",

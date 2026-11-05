@@ -17,7 +17,12 @@ export function isChapter01RedesignEnabled(
   overrideFlag?: boolean,
 ): boolean {
   const flag = overrideFlag ?? ENABLE_CHAPTER_01_REDESIGN;
-  return Boolean(flag && courseKey === "pooley" && chapterId === "chapter-01");
+  // Redesigned full-viewport learning workspace is enabled for every E-Learning
+  // module and chapter. (courseKey/chapterId kept in the signature for callers and
+  // for the Pooley Chapter-01 bespoke experience selection in the reader.)
+  void courseKey;
+  void chapterId;
+  return Boolean(flag);
 }
 
 export interface QuickFactItem {

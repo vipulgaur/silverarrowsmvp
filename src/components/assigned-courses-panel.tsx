@@ -73,6 +73,13 @@ import {
   airlawCourseSubtitle,
   airlawBookExtras,
 } from "@/lib/airlaw-content";
+import {
+  airmanualChapters,
+  airmanualChapterById,
+  airmanualCourseTitle,
+  airmanualCourseSubtitle,
+  airmanualBookExtras,
+} from "@/lib/airmanual-content";
 import { roleLabel, type LearningRecord, type User } from "@/lib/types";
 
 function getCourseModuleProgress(courseId: CourseId, memberId: string, records: LearningRecord[]) {
@@ -133,6 +140,21 @@ function getCourseModuleProgress(courseId: CourseId, memberId: string, records: 
       resumeTitle: nextChapter ? `Ch ${nextChapter.number}: ${nextChapter.title}` : undefined,
     };
   }
+  if (courseId === "airmanual") {
+    const p = courseProgress(records, memberId, airmanualChapters, "airmanual");
+    const available = airmanualChapters.filter((c) => c.sections.length > 0);
+    const nextChapter = available.find(
+      (c) =>
+        !records.some(
+          (r) => r.memberId === memberId && r.chapterId === `airmanual-${c.id}` && r.completed,
+        ),
+    );
+    return {
+      ...p,
+      resumeChapterId: nextChapter?.id ?? "chapter-01",
+      resumeTitle: nextChapter ? `Ch ${nextChapter.number}: ${nextChapter.title}` : undefined,
+    };
+  }
   return {
     completed: AIR_LAW_TOPICS.length,
     total: AIR_LAW_TOPICS.length,
@@ -158,6 +180,7 @@ export function CourseReaderView({
   const [electricsChapterId, setElectricsChapterId] = useState(initialChapterId);
   const [powerplantChapterId, setPowerplantChapterId] = useState(initialChapterId);
   const [airlawChapterId, setAirlawChapterId] = useState(initialChapterId);
+  const [airmanualChapterId, setAirmanualChapterId] = useState(initialChapterId);
   const { data, me, update, log } = useStore();
 
   const isAirLawCompleted = Boolean(
@@ -317,6 +340,43 @@ export function CourseReaderView({
           courseKey="powerplant"
           onSelectChapter={(id) => {
             setPowerplantChapterId(id);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (courseId === "airmanual") {
+    return (
+      <div className="space-y-6">
+        {onBack && (
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border pb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onBack}
+              className="flex items-center gap-2 font-medium"
+            >
+              <ArrowLeft className="h-4 w-4" /> {backLabel}
+            </Button>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span className="flex h-2 w-2 rounded-full bg-sky-500" />
+              <span>CAE ATPL 0: Air Manual · Assigned Course Reader</span>
+            </div>
+          </div>
+        )}
+        <LearningReader
+          key={airmanualChapterId}
+          chapterId={airmanualChapterId}
+          chapters={airmanualChapters}
+          getChapterById={airmanualChapterById}
+          courseTitle={airmanualCourseTitle}
+          courseSubtitle={airmanualCourseSubtitle}
+          extras={airmanualBookExtras}
+          courseKey="airmanual"
+          onSelectChapter={(id) => {
+            setAirmanualChapterId(id);
             window.scrollTo({ top: 0, behavior: "smooth" });
           }}
         />

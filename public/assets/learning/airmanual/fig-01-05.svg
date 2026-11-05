@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 620 280" role="img" aria-label="Tailplane versus stabilator">
+  <rect width="620" height="280" fill="#ffffff"/>
+  <g fill="none" stroke="#1f2937" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- left: fixed stabiliser + moving elevator -->
+    <path d="M60 120 L190 110 L200 112 L70 124 Z" fill="#e5e7eb"/>
+    <path d="M200 112 L255 108 L255 118 L200 118 Z" fill="#cbd5e1" stroke-dasharray="6 5"/>
+    <path d="M225 95 a22 22 0 0 1 0 30" stroke="#2563eb" stroke-width="2.5"/>
+    <polyline points="222,92 228,95 224,101" stroke="#2563eb" stroke-width="2.5"/>
+    <!-- right: stabilator (one-piece pivot) -->
+    <path d="M370 120 L560 110 L560 120 L380 130 Z" fill="#e5e7eb" stroke-dasharray="6 5"/>
+    <circle cx="455" cy="118" r="5" fill="#1f2937"/>
+    <path d="M455 86 a30 30 0 0 1 0 64" stroke="#2563eb" stroke-width="2.5"/>
+    <polyline points="451,83 459,86 453,93" stroke="#2563eb" stroke-width="2.5"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#111827" text-anchor="middle">
+    <text x="155" y="180">Fixed horizontal stabiliser</text>
+    <text x="155" y="198">plus moving elevator</text>
+    <text x="465" y="180">Stabilator</text>
+    <text x="465" y="198">(all-moving tailplane)</text>
+  </g>
+  <text x="310" y="255" font-family="Arial, sans-serif" font-size="14" fill="#6b7280" text-anchor="middle">Fig 1-5 — Different tailplane designs</text>
+</svg>

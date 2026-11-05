@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 300" role="img" aria-label="Three flight control input devices">
+  <rect width="600" height="300" fill="#ffffff"/>
+  <g fill="none" stroke="#1f2937" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 1: control column / joystick -->
+    <line x1="100" y1="220" x2="100" y2="90"/>
+    <circle cx="100" cy="78" r="14" fill="#374151"/>
+    <rect x="70" y="220" width="60" height="16" rx="4" fill="#d1d5db"/>
+    <!-- 2: control wheel / yoke -->
+    <line x1="300" y1="220" x2="300" y2="120"/>
+    <path d="M250 110 a50 30 0 1 0 100 0 a50 30 0 1 0 -100 0"/>
+    <line x1="260" y1="118" x2="340" y2="118"/>
+    <rect x="270" y="220" width="60" height="16" rx="4" fill="#d1d5db"/>
+    <!-- 3: side-stick on tiered boot -->
+    <line x1="500" y1="210" x2="500" y2="110"/>
+    <path d="M490 100 q10 -14 20 0" />
+    <rect x="474" y="210" width="52" height="12" rx="3" fill="#9ca3af"/>
+    <rect x="466" y="222" width="68" height="12" rx="3" fill="#9ca3af"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#111827" text-anchor="middle">
+    <text x="100" y="268">Control column</text>
+    <text x="100" y="286">(joystick)</text>
+    <text x="300" y="268">Control wheel</text>
+    <text x="300" y="286">(yoke)</text>
+    <text x="500" y="268">Side-stick</text>
+  </g>
+</svg>

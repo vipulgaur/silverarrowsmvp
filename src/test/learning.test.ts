@@ -133,6 +133,7 @@ describe("Course assignment access control", () => {
     const student = d.users.find((u) => u.id === "u-ana")!;
 
     expect(accessibleModulesFor(admin, d).map((m) => m.id)).toEqual([
+      "airmanual",
       "pooley",
       "airlaw",
       "airframes",

@@ -14,18 +14,18 @@ import { chapterById } from "@/lib/learning-content";
 describe("Familiarisation with the Aeroplane — Chapter 1 Redesign", () => {
   const chapter01 = chapterById("chapter-01")!;
 
-  it("scopes the redesign strictly to Pooley Chapter 1 and supports instant rollback via flag", () => {
+  it("enables the redesigned workspace for every module and chapter, with instant rollback via flag", () => {
+    // The redesigned full-viewport workspace now applies to every E-Learning
+    // module and chapter when the flag is on.
     expect(isChapter01RedesignEnabled("pooley", "chapter-01", true)).toBe(true);
-    // Other Pooley chapters remain untouched
-    expect(isChapter01RedesignEnabled("pooley", "chapter-02", true)).toBe(false);
-    expect(isChapter01RedesignEnabled("pooley", "chapter-03", true)).toBe(false);
-    expect(isChapter01RedesignEnabled("pooley", "chapter-04", true)).toBe(false);
-    // Other courses' Chapter 1 remain untouched
-    expect(isChapter01RedesignEnabled("airframes", "chapter-01", true)).toBe(false);
-    expect(isChapter01RedesignEnabled("electrics", "chapter-01", true)).toBe(false);
-    expect(isChapter01RedesignEnabled("powerplant", "chapter-01", true)).toBe(false);
-    // Disabling the feature flag restores the original chapter immediately
+    expect(isChapter01RedesignEnabled("pooley", "chapter-02", true)).toBe(true);
+    expect(isChapter01RedesignEnabled("airframes", "chapter-01", true)).toBe(true);
+    expect(isChapter01RedesignEnabled("electrics", "chapter-03", true)).toBe(true);
+    expect(isChapter01RedesignEnabled("powerplant", "chapter-05", true)).toBe(true);
+    expect(isChapter01RedesignEnabled("airmanual", "chapter-01", true)).toBe(true);
+    // Disabling the feature flag restores the original rendering everywhere immediately
     expect(isChapter01RedesignEnabled("pooley", "chapter-01", false)).toBe(false);
+    expect(isChapter01RedesignEnabled("airframes", "chapter-02", false)).toBe(false);
   });
 
   it("preserves all 11 syllabus sections and maps verified interactive components & key facts", () => {

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" role="img" aria-label="Tricycle versus tailwheel undercarriage">
+  <rect width="640" height="300" fill="#ffffff"/>
+  <g fill="none" stroke="#1f2937" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <!-- LEFT: tricycle, level -->
+    <path d="M60 120 q40 -40 130 -34 l70 4 q40 2 52 26 l-30 10 q-110 6 -214 0 Z" fill="#eef2f7"/>
+    <path d="M120 90 q30 -26 70 -18 l-6 26 Z" fill="#dbe4ee"/>
+    <line x1="120" y1="128" x2="120" y2="168"/><circle cx="120" cy="178" r="12" fill="#374151"/>
+    <line x1="250" y1="130" x2="250" y2="168"/><circle cx="250" cy="178" r="12" fill="#374151"/>
+    <line x1="80" y1="124" x2="80" y2="158"/><circle cx="80" cy="166" r="9" fill="#374151"/>
+    <line x1="40" y1="192" x2="300" y2="192" stroke="#9ca3af"/>
+    <!-- RIGHT: tailwheel, nose-up -->
+    <path d="M380 120 q50 -36 140 -26 l66 6 q34 4 44 26 l-30 14 q-120 4 -222 -2 Z" fill="#eef2f7" transform="rotate(-7 480 120)"/>
+    <line x1="430" y1="134" x2="430" y2="176"/><circle cx="430" cy="186" r="12" fill="#374151"/>
+    <line x1="560" y1="120" x2="560" y2="150"/><circle cx="560" cy="158" r="12" fill="#374151"/>
+    <line x1="370" y1="150" x2="372" y2="176"/><circle cx="372" cy="183" r="7" fill="#374151"/>
+    <line x1="360" y1="200" x2="620" y2="200" stroke="#9ca3af"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#111827" text-anchor="middle">
+    <text x="165" y="238">Tricycle</text>
+    <text x="490" y="238">Tailwheel</text>
+  </g>
+  <text x="320" y="278" font-family="Arial, sans-serif" font-size="14" fill="#6b7280" text-anchor="middle">Fig 1-6 — The tricycle undercarriage and the tailwheel type</text>
+</svg>

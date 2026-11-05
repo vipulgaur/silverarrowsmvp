@@ -388,3 +388,7 @@ export const figureAssets: Record<string, FigureAsset> = {
 };
 
 export { airframesFigureAssets, electricsFigureAssets, powerplantFigureAssets, airlawFigureAssets };
+
+// Air Manual (CAE ATPL 0) figures are NOT merged here: their Fig-01-xx ids would override
+// Pooley Chapter 1's identically numbered figures. The learning reader passes
+// airmanualFigureAssets to the workspace as a module-scoped map instead.

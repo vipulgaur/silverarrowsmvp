@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 460" role="img" aria-label="Typical light aircraft instrument panel">
+  <rect width="760" height="460" fill="#ffffff"/>
+  <rect x="20" y="60" width="720" height="360" rx="16" fill="#f3f4f6" stroke="#1f2937" stroke-width="2"/>
+  <!-- magnetic compass on coaming -->
+  <rect x="340" y="24" width="80" height="34" rx="8" fill="#e5e7eb" stroke="#1f2937" stroke-width="2"/>
+  <text x="380" y="46" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#111827" text-anchor="middle">Compass</text>
+  <!-- six-pack -->
+  <g fill="#ffffff" stroke="#1f2937" stroke-width="2">
+    <circle cx="110" cy="150" r="42"/><circle cx="210" cy="150" r="42"/><circle cx="310" cy="150" r="42"/>
+    <circle cx="110" cy="250" r="42"/><circle cx="210" cy="250" r="42"/><circle cx="310" cy="250" r="42"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="11" font-weight="700" fill="#111827" text-anchor="middle">
+    <text x="110" y="153">ASI</text><text x="210" y="153">ATT</text><text x="310" y="153">ALT</text>
+    <text x="110" y="253">T/C</text><text x="210" y="253">HDG</text><text x="310" y="253">VSI</text>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="11" fill="#374151" text-anchor="middle">
+    <text x="110" y="110">Airspeed</text><text x="210" y="110">Attitude</text><text x="310" y="110">Altimeter</text>
+    <text x="110" y="305">Turn coord.</text><text x="210" y="305">Heading</text><text x="310" y="305">Vertical speed</text>
+    <text x="210" y="318">(+ balance ball)</text>
+  </g>
+  <!-- central avionics + right gauges -->
+  <rect x="400" y="110" width="150" height="180" rx="8" fill="#e5e7eb" stroke="#1f2937" stroke-width="2"/>
+  <text x="475" y="135" font-family="Arial, sans-serif" font-size="12" font-weight="700" fill="#111827" text-anchor="middle">Radio panel</text>
+  <g fill="#ffffff" stroke="#1f2937" stroke-width="2">
+    <circle cx="620" cy="140" r="26"/><circle cx="680" cy="140" r="26"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="10" fill="#374151" text-anchor="middle">
+    <text x="620" y="180">Suction</text>
+    <text x="680" y="180">Oil P/T</text>
+  </g>
+  <!-- lower controls -->
+  <g fill="#d1d5db" stroke="#1f2937" stroke-width="2">
+    <circle cx="430" cy="355" r="16"/><rect x="480" y="340" width="20" height="36" rx="5"/><rect x="540" y="340" width="20" height="36" rx="5" fill="#ef4444"/>
+    <rect x="600" y="340" width="110" height="36" rx="6" fill="#e5e7eb"/>
+  </g>
+  <g font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="#111827" text-anchor="middle">
+    <text x="430" y="392">Carb heat</text><text x="490" y="392">Throttle</text><text x="550" y="392">Mixture</text><text x="655" y="392">Circuit breakers</text>
+    <text x="150" y="392">Fuel gauges / Tachometer</text>
+  </g>
+  <rect x="60" y="340" width="150" height="36" rx="6" fill="#e5e7eb" stroke="#1f2937" stroke-width="2"/>
+  <text x="380" y="440" font-family="Arial, sans-serif" font-size="14" fill="#6b7280" text-anchor="middle">Fig 1-9 — A typical instrument panel</text>
+</svg>

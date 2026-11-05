@@ -1,12 +1,13 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useCallback, useState } from "react";
-import { ArrowRight, BookOpen, CheckCircle2, Clock, FileDown, Info, Lock, Plane, Users, X } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ArrowRight, X } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
-import { HomepageAviationSequence } from "@/components/homepage-aviation-sequence";
+import { LandingTakeoffScene } from "@/components/landing-takeoff-scene";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { APP_BUILD_HASH } from "@/lib/build-info";
 import { downloadDifferenceReportPdf } from "@/lib/difference-report-pdf";
+import { ELEARNING_MODULES } from "@/lib/elearning-courses";
 
 const TOP_BAR_LINKS = [
   {
@@ -40,7 +41,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "SilverArrows: Open-access aviation E-Learning (Air Manual - Pooley & Air Law) and complete Flight Logger academy operations platform.",
+          "SilverArrows Flight Academy: ground-school e-learning and day-to-day flight operations for students, instructors and staff.",
       },
       {
         property: "og:title",
@@ -49,40 +50,28 @@ export const Route = createFileRoute("/")({
       {
         property: "og:description",
         content:
-          "Open-access aviation theory e-learning and comprehensive flight logger operations for students, instructors, and administrators.",
+          "Study the theory for your licence, then book aircraft, log flights and keep training records in one place.",
       },
     ],
   }),
-  component: MinimalLandingPage,
+  component: LandingPage,
 });
 
-function MinimalLandingPage() {
-  const [badgeHighlight, setBadgeHighlight] = useState(0);
-  const [sequenceSettled, setSequenceSettled] = useState(false);
+function LandingPage() {
   const [activeTopBarSection, setActiveTopBarSection] = useState<TopBarSectionId | null>(null);
-
-  const handleBoundaryHighlight = useCallback((intensity: number, settled: boolean) => {
-    setBadgeHighlight(intensity);
-    setSequenceSettled(settled);
-  }, []);
-
-  // Triggered at the exact moment the flying logo strikes the Silver Arrow's box!
-  const logoStruckBox = sequenceSettled || badgeHighlight >= 0.35;
-  const activeGlow = sequenceSettled ? Math.max(0.55, badgeHighlight) : badgeHighlight;
   const selectedTopBarItem = TOP_BAR_LINKS.find((item) => item.id === activeTopBarSection);
 
   return (
-    <div className="min-h-screen bg-background text-foreground antialiased flex flex-col justify-between selection:bg-primary/20 selection:text-primary overflow-x-hidden">
-      {/* Top Header with Navigation Links ("Details to be added soon") & Theme Toggle */}
-      <header className="relative z-30 border-b border-border/80 bg-background/85 px-4 py-3.5 backdrop-blur-md sm:px-6 lg:px-8">
-        <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-between gap-4">
-          <Link to="/" className="flex items-center gap-3 transition hover:opacity-90">
-            <BrandLogo className="h-10 sm:h-12" />
+    <div className="flex min-h-screen flex-col overflow-x-hidden bg-background text-foreground antialiased">
+      <header className="relative z-30 border-b border-border/70 bg-background/90 backdrop-blur-md">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3 sm:px-6 lg:px-8">
+          <Link to="/" className="transition-opacity hover:opacity-80">
+            <BrandLogo className="h-10" />
           </Link>
 
           <nav
-            aria-label="Homepage information links"
-            className="flex flex-wrap items-center gap-1 sm:gap-2"
+            aria-label="Academy information"
+            className="order-3 -mx-1 flex w-full gap-1 overflow-x-auto md:order-none md:mx-0 md:w-auto"
           >
             {TOP_BAR_LINKS.map((item) => {
               const isSelected = activeTopBarSection === item.id;
@@ -90,349 +79,195 @@ function MinimalLandingPage() {
                 <button
                   key={item.id}
                   type="button"
+                  aria-expanded={isSelected}
                   onClick={() =>
                     setActiveTopBarSection((prev) => (prev === item.id ? null : item.id))
                   }
-                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs sm:text-sm font-medium transition-all ${
+                  className={`shrink-0 rounded-md px-3 py-2 text-sm transition-colors ${
                     isSelected
-                      ? "bg-primary text-primary-foreground shadow-xs"
-                      : "text-muted-foreground hover:bg-card/80 hover:text-foreground"
+                      ? "bg-secondary font-medium text-foreground"
+                      : "text-muted-foreground hover:text-foreground"
                   }`}
                 >
-                  {item.id === "team-members" ? (
-                    <Users className="h-3.5 w-3.5 opacity-80" />
-                  ) : (
-                    <Info className="h-3.5 w-3.5 opacity-80" />
-                  )}
-                  <span>{item.label}</span>
+                  {item.label}
                 </button>
               );
             })}
           </nav>
 
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <button
-              type="button"
-              onClick={() => downloadDifferenceReportPdf()}
-              data-testid="download-difference-report-pdf"
-              className="inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-bold text-primary shadow-2xs transition hover:bg-primary hover:text-primary-foreground cursor-pointer"
-              title="Download Comprehensive SilverArrows vs FlightLogger REA Architecture Difference Report (PDF)"
-            >
-              <FileDown className="h-3.5 w-3.5" />
-              <span>Difference Report (PDF)</span>
-            </button>
-            <ThemeToggle />
-          </div>
+          <ThemeToggle />
         </div>
 
-        {/* Expandable Info Strip when a Top Bar Link (About Us, Team Members, etc.) is clicked */}
         {selectedTopBarItem && (
-          <div
-            data-testid="top-bar-coming-soon-panel"
-            className="mx-auto mt-3 flex w-full max-w-[1600px] items-center justify-between gap-4 rounded-2xl border border-primary/35 bg-card/90 px-4 py-3 text-xs sm:text-sm shadow-lg backdrop-blur-xl"
-          >
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-semibold text-primary">
-                <Clock className="h-3.5 w-3.5" />
-                {selectedTopBarItem.label}
-              </span>
-              <span className="font-semibold text-foreground">
-                Details to be added soon.
-              </span>
-              <span className="hidden text-muted-foreground md:inline">
-                — {selectedTopBarItem.subtitle}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setActiveTopBarSection(null)}
-              aria-label="Close information notice"
-              className="rounded-full p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          <div className="border-t border-border/70">
+            <div
+              data-testid="top-bar-coming-soon-panel"
+              className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 py-2.5 text-sm sm:px-6 lg:px-8"
             >
-              <X className="h-4 w-4" />
-            </button>
+              <p>
+                <span className="font-medium text-foreground">{selectedTopBarItem.label}</span>
+                <span className="text-muted-foreground"> · Details to be added soon.</span>
+                <span className="hidden text-muted-foreground md:inline">
+                  {" "}
+                  {selectedTopBarItem.subtitle}
+                </span>
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTopBarSection(null)}
+                aria-label="Close information notice"
+                className="rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         )}
       </header>
 
-      {/* Two-Region Homepage Composition:
-          LEFT (41-42% on desktop): Circular Avionics PFD/HSI takeoff sequence & interactive aircraft controller
-          RIGHT (58-59% on desktop): Blurred right-side backdrop + Silver Arrow's strike box that
-                                     reveals the 2-line heading text and menu cards upon logo impact */}
-      <main className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col justify-center px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
-        <div
-          data-testid="homepage-two-region-layout"
-          className="relative flex w-full flex-col gap-8 lg:flex-row lg:items-center lg:justify-between lg:gap-8 xl:gap-10"
-        >
-          {/* LEFT REGION: Contained Circular Avionics Visual Area */}
-          <section
-            aria-label="Aviation takeoff visual sequence"
-            data-testid="homepage-left-visual-region"
-            className="relative z-20 w-full lg:w-[41%] xl:w-[42%] shrink-0"
-          >
-            <HomepageAviationSequence onBoundaryHighlightChange={handleBoundaryHighlight} />
-          </section>
+      <main className="flex-1">
+        <section aria-labelledby="landing-title" className="relative">
+          <LandingTakeoffScene className="h-[clamp(440px,68vh,660px)]" />
 
-          {/* RIGHT REGION: Blurred Backdrop + Strike-Revealed Heading & Menu Cards */}
-          <section
-            aria-label="SilverArrows E-Learning and Flight Logger"
-            data-testid="homepage-right-content-region"
-            className="relative z-10 w-full lg:w-[59%] xl:w-[58%] lg:pl-8 xl:pl-10"
-          >
-            {/* Blurred Right-Side Frosted Glass Background & Ambient Illumination Aura */}
-            <div
-              data-testid="right-side-backdrop-blur"
-              aria-hidden="true"
-              className={`pointer-events-none absolute -inset-4 -z-10 rounded-[2rem] transition-all duration-700 sm:-inset-6 ${
-                logoStruckBox
-                  ? "border border-primary/25 bg-card/35 opacity-100 shadow-2xl backdrop-blur-2xl"
-                  : "border border-transparent bg-card/10 opacity-40 backdrop-blur-md"
-              }`}
-              style={{
-                backgroundImage: logoStruckBox
-                  ? "radial-gradient(circle at 28% 16%, color-mix(in oklch, var(--primary) 22%, transparent) 0%, transparent 58%), radial-gradient(circle at 75% 65%, color-mix(in oklch, var(--primary) 10%, transparent) 0%, transparent 65%)"
-                  : undefined,
-              }}
-            />
+          {/* Soft scrim on the text side only, so copy stays legible over the sky */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-y-0 left-0 w-full bg-gradient-to-r from-background/55 via-background/15 to-transparent md:w-2/3"
+          />
 
-            <div className="relative text-left lg:max-w-none">
-              {/* Two-Line Heading:
-                  Line 1: Welcome to [Silver Arrow's]
-                  Line 2: E-Learning Academy & Flight Logger OS */}
-              <h1 className="text-2xl font-extrabold tracking-tight sm:text-3xl lg:text-[1.95rem] xl:text-[2.25rem] 2xl:text-[2.5rem] leading-tight">
-                {/* LINE 1: "Welcome to" + Silver Arrow's Box */}
-                <span className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap">
-                  <span
-                    className={`inline-block whitespace-nowrap transition-all duration-500 ease-out ${
-                      logoStruckBox
-                        ? "translate-y-0 opacity-100 blur-none"
-                        : "translate-y-2 opacity-0 blur-sm"
-                    }`}
-                  >
-                    Welcome to
-                  </span>
-
-                  {/* Target Box: Always visible as the destination beacon; erupts with illumination on strike */}
-                  <span
-                    id="silver-arrows-target-badge"
-                    data-testid="settled-brand-emblem-badge"
-                    data-settled={logoStruckBox ? "true" : "false"}
-                    className="relative inline-flex items-center gap-2.5 rounded-2xl border bg-card/90 px-3.5 py-1 whitespace-nowrap backdrop-blur-md transition-all duration-300"
-                    style={{
-                      borderColor: logoStruckBox
-                        ? "var(--primary)"
-                        : "color-mix(in oklch, var(--primary) 40%, transparent)",
-                      boxShadow: logoStruckBox
-                        ? `0 0 ${Math.round(22 + activeGlow * 30)}px -2px var(--primary), inset 0 0 ${Math.round(10 + activeGlow * 16)}px color-mix(in oklch, var(--primary) ${Math.round(16 + activeGlow * 24)}%, transparent)`
-                        : "0 0 12px -4px color-mix(in oklch, var(--primary) 30%, transparent)",
-                    }}
-                  >
-                    {/* Subtle Shockwave Ring when Logo Strikes the Box */}
-                    {logoStruckBox && (
-                      <span
-                        aria-hidden="true"
-                        className="pointer-events-none absolute -inset-1 rounded-2xl border border-primary/50 opacity-0 animate-[ping_0.85s_cubic-bezier(0,0,0.2,1)_1]"
-                      />
-                    )}
-                    <img
-                      id="silver-arrows-target-logo"
-                      src="/favicon.png"
-                      alt=""
-                      aria-hidden="true"
-                      className="h-7 w-7 shrink-0 object-contain transition-all duration-200 sm:h-9 sm:w-9 lg:h-10 lg:w-10"
-                      style={{
-                        opacity: logoStruckBox ? 1 : 0.14,
-                        filter: logoStruckBox
-                          ? "drop-shadow(0 0 12px var(--primary))"
-                          : "grayscale(1)",
-                        transform: logoStruckBox ? "scale(1)" : "scale(0.9)",
-                      }}
-                    />
-                    <span className="font-black tracking-tight text-primary transition-colors duration-300">
-                      Silver Arrow&apos;s
-                    </span>
-                  </span>
-                </span>
-
-                {/* LINE 2: E-Learning Academy & Flight Logger OS */}
-                <span
-                  className={`mt-2 block sm:whitespace-nowrap transition-all delay-75 duration-500 ease-out ${
-                    logoStruckBox
-                      ? "translate-y-0 opacity-100 blur-none"
-                      : "translate-y-2 opacity-0 blur-sm"
-                  }`}
-                >
-                  E-Learning Academy &amp;{" "}
-                  <span className="text-primary transition-colors duration-300">
-                    Flight Logger OS
-                  </span>
-                </span>
-              </h1>
-
-              {/* Subtitle Description: Revealed upon Logo Strike */}
-              <p
-                className={`mt-3.5 text-sm text-muted-foreground sm:text-lg leading-relaxed transition-all delay-100 duration-500 ease-out ${
-                  logoStruckBox
-                    ? "translate-y-0 opacity-100 blur-none"
-                    : "translate-y-3 opacity-0 blur-md"
-                }`}
+          <div className="pointer-events-none absolute inset-x-0 top-0">
+            <div className="mx-auto w-full max-w-7xl px-4 pt-[11vh] sm:px-6 lg:px-8">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-foreground/75">
+                SilverArrows Flight Academy
+              </p>
+              <h1
+                id="landing-title"
+                className="mt-4 max-w-2xl text-4xl font-semibold leading-[1.08] tracking-tight text-foreground sm:text-5xl lg:text-6xl"
               >
-                Role-assigned ground school theory with interactive cockpit diagrams alongside a
-                certified flight logging, scheduling, and regulatory audit management system.
+                Ground school and flight operations, in one place.
+              </h1>
+              <p className="mt-5 max-w-xl text-base leading-relaxed text-foreground/80 sm:text-lg">
+                Students study the theory and track their progress. Instructors and staff run
+                bookings, logbooks and the fleet.
               </p>
             </div>
+          </div>
+        </section>
 
-            {/* The Two Distinct Core Menu Tiles: Revealed with Staggered Unblur when Logo Strikes Box */}
-            <div
-              data-testid="homepage-revealed-menu-cards"
-              data-revealed={logoStruckBox ? "true" : "false"}
-              className={`mt-7 grid gap-5 sm:grid-cols-2 transition-all delay-150 duration-600 ease-out ${
-                logoStruckBox
-                  ? "translate-y-0 scale-100 opacity-100 blur-none"
-                  : "pointer-events-none translate-y-5 scale-[0.97] opacity-0 blur-md"
-              }`}
-            >
-              {/* Tile 1: E-Learning Ground School */}
-              <div className="group relative flex flex-col justify-between rounded-3xl border border-border/80 bg-card/85 p-5 shadow-sm backdrop-blur-xl transition-all hover:border-primary/60 hover:shadow-xl sm:p-6">
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-500/15 text-sky-500 ring-1 ring-sky-500/30 transition-colors group-hover:bg-sky-500 group-hover:text-white">
-                      <BookOpen className="h-5 w-5" />
-                    </div>
-                    <span className="rounded-full bg-sky-500/10 px-3 py-1 text-xs font-semibold text-sky-600 dark:text-sky-400 font-mono">
-                      EASA / DGCA SYLLABUS
-                    </span>
-                  </div>
-                  <h2 className="mt-4 text-xl font-extrabold tracking-tight sm:text-2xl text-foreground">
-                    Ground School Academy
-                  </h2>
-                  <p className="mt-2 text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                    Interactive theory syllabus featuring Pooley's Air Manual with interactive cockpit
-                    diagrams, Air Law regulations, and per-cadet syllabus tracking.
-                  </p>
-                  <div className="mt-4 space-y-2 text-xs font-medium text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-500" />
-                      <span className="text-foreground">19 Interactive Pooley Theory Chapters</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-500" />
-                      <span className="text-foreground">Air Law &amp; Flight Regulations Explorer</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-sky-500" />
-                      <span className="text-foreground">Cadet Profile Syllabus Assignment</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-border/60">
-                  <Link
-                    to="/elearning"
-                    data-testid="landing-btn-elearning"
-                    className="relative inline-flex items-center justify-center w-full px-5 py-3.5 text-sm font-black tracking-wide text-white rounded-2xl bg-gradient-to-b from-sky-500 via-sky-600 to-sky-700 shadow-[0_5px_0_0_#0284c7,0_10px_20px_rgba(2,132,199,0.35)] border-t border-sky-300/40 hover:from-sky-400 hover:to-sky-600 hover:shadow-[0_6px_0_0_#0284c7,0_12px_22px_rgba(2,132,199,0.4)] active:translate-y-1 active:shadow-[0_1px_0_0_#0284c7,0_4px_8px_rgba(2,132,199,0.25)] transition-all cursor-pointer group/btn"
-                  >
-                    <BookOpen className="mr-2 h-4 w-4 drop-shadow" />
-                    <span>Launch E-Learning</span>
-                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
+        <section
+          aria-label="Choose where to go"
+          className="relative z-10 mx-auto w-full max-w-7xl px-4 pb-16 pt-10 sm:pt-12 sm:px-6 lg:px-8"
+        >
+          <div className="grid gap-5 md:grid-cols-2">
+            <OptionCard
+              system="E-Learning"
+              title="Ground School"
+              description="Study the theory for your licence at your own pace. Your instructor assigns the courses you need."
+              points={[
+                `${ELEARNING_MODULES.length} theory courses, from Air Law to Powerplant`,
+                "Chapters with figures, notes and bookmarks",
+                "Progress saved to your profile",
+              ]}
+              action={
+                <Button asChild size="lg" className="w-full sm:w-auto">
+                  <Link to="/elearning" data-testid="landing-btn-elearning">
+                    Open e-learning
+                    <ArrowRight className="h-4 w-4" />
                   </Link>
-                </div>
-              </div>
-
-              {/* Tile 2: Flight Logger / Operations OS */}
-              <div className="group relative flex flex-col justify-between rounded-3xl border border-border/80 bg-card/85 p-5 shadow-sm backdrop-blur-xl transition-all hover:border-amber-500/60 hover:shadow-xl sm:p-6">
-                <div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-500 ring-1 ring-amber-500/30 transition-colors group-hover:bg-amber-500 group-hover:text-white">
-                      <Plane className="h-5 w-5" />
-                    </div>
-                    <span className="rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-600 dark:text-amber-400 font-mono">
-                      OPERATIONS OS
-                    </span>
-                  </div>
-                  <h2 className="mt-4 text-xl font-extrabold tracking-tight sm:text-2xl text-foreground">
-                    Flight Operations OS
-                  </h2>
-                  <p className="mt-2 text-xs sm:text-sm text-muted-foreground leading-relaxed">
-                    Certified academy operations platform with dedicated role portals, digital pilot
-                    logbooks, fleet scheduling, and verified post-flight records.
-                  </p>
-                  <div className="mt-4 space-y-2 text-xs font-medium text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
-                      <span className="text-foreground">Student, CFI &amp; Ground School Portals</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
-                      <span className="text-foreground">Electronic Logbooks &amp; Fleet Scheduling</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-amber-500" />
-                      <span className="text-foreground">Post-Flight Verification &amp; Audit Trail</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 pt-4 border-t border-border/60">
-                  <Link
-                    to="/login"
-                    data-testid="landing-btn-flight-logger"
-                    className="relative inline-flex items-center justify-center w-full px-5 py-3.5 text-sm font-black tracking-wide text-white rounded-2xl bg-gradient-to-b from-amber-500 via-amber-600 to-amber-700 shadow-[0_5px_0_0_#b45309,0_10px_20px_rgba(217,119,6,0.35)] border-t border-amber-300/40 hover:from-amber-400 hover:to-amber-600 hover:shadow-[0_6px_0_0_#b45309,0_12px_22px_rgba(217,119,6,0.4)] active:translate-y-1 active:shadow-[0_1px_0_0_#b45309,0_4px_8px_rgba(217,119,6,0.25)] transition-all cursor-pointer group/btn"
-                  >
-                    <Plane className="mr-2 h-4 w-4 drop-shadow" />
-                    <span>Enter Flight Operations</span>
-                    <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover/btn:translate-x-1" />
+                </Button>
+              }
+            />
+            <OptionCard
+              system="Flight Logger"
+              title="Flight Operations"
+              description="Book aircraft, log flights and keep training records for students, instructors and staff."
+              points={[
+                "Bookings and the daily schedule",
+                "Logbook entries with instructor sign-off",
+                "Fleet status and maintenance tracking",
+              ]}
+              action={
+                <Button asChild size="lg" className="w-full sm:w-auto">
+                  <Link to="/login" data-testid="landing-btn-flight-logger">
+                    Sign in to operations
+                    <ArrowRight className="h-4 w-4" />
                   </Link>
-                </div>
-              </div>
-            </div>
+                </Button>
+              }
+            />
+          </div>
 
-            {/* Minimal Feature Highlights Bar: Revealed after Menu Cards */}
-            <div
-              className={`mt-6 flex flex-wrap items-center justify-center gap-x-6 gap-y-2.5 rounded-2xl border border-border/80 bg-card/55 px-5 py-3.5 text-xs font-medium text-muted-foreground backdrop-blur-xl transition-all delay-250 duration-600 ease-out ${
-                logoStruckBox
-                  ? "translate-y-0 opacity-100 blur-none"
-                  : "pointer-events-none translate-y-4 opacity-0 blur-md"
-              }`}
-            >
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Air Manual — Pooley (19
-                Chapters)
-              </span>
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Air Law Regulations
-              </span>
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Dedicated Role Portals
-              </span>
-              <span className="flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" /> Regulatory Compliance
-                &amp; Audit Trail
-              </span>
-            </div>
-          </section>
-        </div>
+          <p className="mt-6 text-sm text-muted-foreground">
+            Accounts are issued by the academy. New students can request access from the sign-in
+            page, and an administrator approves each request.
+          </p>
+        </section>
       </main>
 
-      {/* Minimal Footer */}
-      <footer className="border-t border-border bg-card/20 px-6 py-4 text-xs text-muted-foreground">
-        <div className="mx-auto flex w-full max-w-[1600px] flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+      <footer className="border-t border-border/70">
+        <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-4 px-4 py-5 text-xs text-muted-foreground sm:px-6 lg:px-8">
+          <div className="flex items-center gap-4">
             <BrandLogo className="h-8" />
+            <span>&copy; {new Date().getFullYear()} SilverArrows Flight Academy</span>
+          </div>
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => downloadDifferenceReportPdf()}
+              data-testid="download-difference-report-pdf"
+              className="underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              Platform difference report (PDF)
+            </button>
             <span
               data-testid="landing-build-badge"
-              className="inline-flex items-center rounded-md border border-border/80 bg-muted/60 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-foreground"
+              className="rounded border border-border px-2 py-0.5 font-mono text-[11px]"
             >
               Build #{APP_BUILD_HASH}
             </span>
           </div>
-          <p className="text-right font-medium text-muted-foreground">
-            &copy; SA Flight Academy OS · Build{" "}
-            <span className="font-mono font-semibold text-foreground">{APP_BUILD_HASH}</span> ·
-            Rights Reserved.
-          </p>
         </div>
       </footer>
     </div>
+  );
+}
+
+function OptionCard({
+  system,
+  title,
+  description,
+  points,
+  action,
+}: {
+  system: string;
+  title: string;
+  description: string;
+  points: string[];
+  action: ReactNode;
+}) {
+  return (
+    <article className="flex flex-col rounded-xl border border-border bg-card p-6 shadow-[0_1px_2px_rgb(0_0_0/0.05),0_18px_40px_-20px_rgb(0_0_0/0.35)] backdrop-blur-sm sm:p-8">
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        {system}
+      </p>
+      <h2 className="mt-2 text-2xl font-semibold tracking-tight text-foreground sm:text-[1.75rem]">
+        {title}
+      </h2>
+      <p className="mt-3 text-sm leading-relaxed text-muted-foreground sm:text-base">
+        {description}
+      </p>
+      <ul className="mt-6 space-y-2.5 border-t border-border pt-6 text-sm text-foreground">
+        {points.map((point) => (
+          <li key={point} className="flex items-baseline gap-3">
+            <span
+              aria-hidden="true"
+              className="h-px w-3 shrink-0 translate-y-[-0.3em] bg-foreground/40"
+            />
+            {point}
+          </li>
+        ))}
+      </ul>
+      <div className="mt-auto pt-8">{action}</div>
+    </article>
   );
 }

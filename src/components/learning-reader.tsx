@@ -30,6 +30,8 @@ import { useStore } from "@/lib/store";
 import { FamiliarisationChapterExperience } from "./familiarisation-chapter-experience";
 import { UniversalChapterExperience } from "./universal-chapter-experience";
 import { LearningBlocks } from "./learning-blocks";
+import { ModuleLearningWorkspace } from "./air-law-workspace";
+import { airmanualFigureAssets } from "@/lib/airmanual-illustrations";
 
 export function LearningReader({
   chapterId = "chapter-01",
@@ -107,6 +109,33 @@ export function LearningReader({
       30,
     );
     log("learning_section_opened", "lesson", `Opened ${id}`, recordId);
+  }
+
+  // Every module/chapter — including Pooley Chapter 01 — uses the full-viewport
+  // learning workspace when it has parsed content.
+  const useModuleWorkspace =
+    Boolean(chapter?.sections.length) &&
+    isChapter01RedesignEnabled(courseKey, chapter?.id ?? "", enableChapter01Redesign);
+
+  if (useModuleWorkspace && chapter) {
+    return (
+      <ModuleLearningWorkspace
+        chapter={chapter}
+        chapters={chapters}
+        courseTitle={activeCourseTitle}
+        completed={record.completed}
+        bookmarked={record.bookmarked}
+        onToggleComplete={() =>
+          save({ completed: !record.completed }, "learning_completion_changed")
+        }
+        onToggleBookmark={() =>
+          save({ bookmarked: !record.bookmarked }, "learning_bookmarked")
+        }
+        onSelectChapter={onSelectChapter}
+        onLogInteraction={(action, details) => log(action, "lesson", details, recordId)}
+        figureAssets={courseKey === "airmanual" ? airmanualFigureAssets : undefined}
+      />
+    );
   }
 
   return (
