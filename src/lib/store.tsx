@@ -49,11 +49,16 @@ import {
   subscribePrivacyTracker,
 } from "./privacy-tracker";
 
+/** Background sync status surfaced to the UI so failed server writes are visible. */
+export type SyncState = "idle" | "syncing" | "synced" | "error";
+
 interface Store {
   data: AppData;
   hydrated: boolean;
   me: User | null;
   noAccess: boolean;
+  /** Status of the most recent background sync with the server (Supabase). */
+  syncState: SyncState;
   signOut: () => Promise<void>;
   reload: () => Promise<void>;
   update: (fn: (d: AppData) => AppData) => void;
@@ -120,6 +125,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return !!(demoSession?.user || cached?.id);
   });
   const [activeTenantId, setActiveTenantId] = useState<string | null>(null);
+  const [syncState, setSyncState] = useState<SyncState>("idle");
 
   const latest = useRef<AppData>(data);
   latest.current = data;
@@ -127,26 +133,44 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const tenantIdRef = useRef<string | null>(null);
   const baselineRef = useRef<Tables | null>(null);
   const isSyncingRef = useRef(false);
+  // Throttle repeated sync-failure toasts so a flaky connection doesn't spam.
+  const lastSyncErrorToastRef = useRef<number>(0);
 
-  const applyAndSync = useCallback((next: AppData) => {
-    const merged = mergeCourseAssignments(next);
-    writeStoredCourseAssignments(merged.activity);
-    writeDemoData(merged);
-    pushLocalSync(merged);
-    latest.current = merged;
-    setData(merged);
-
-    if (tenantIdRef.current && baselineRef.current) {
-      const nextTables = toTables(merged, tenantIdRef.current);
-      const diff = diffTables(baselineRef.current, nextTables);
-      baselineRef.current = nextTables;
-      if (hasChanges(diff)) {
-        void pushChanges(diff, tenantIdRef.current).catch((err) => {
-          console.warn("Background sync warning:", err);
-        });
-      }
+  const notifySyncFailure = useCallback((err: unknown) => {
+    console.warn("Background sync warning:", err);
+    setSyncState("error");
+    const now = Date.now();
+    if (now - lastSyncErrorToastRef.current > 15000) {
+      lastSyncErrorToastRef.current = now;
+      toast.error(
+        "Some changes could not be saved to the academy database and are kept locally. They will retry automatically when the connection is restored.",
+      );
     }
   }, []);
+
+  const applyAndSync = useCallback(
+    (next: AppData) => {
+      const merged = mergeCourseAssignments(next);
+      writeStoredCourseAssignments(merged.activity);
+      writeDemoData(merged);
+      pushLocalSync(merged);
+      latest.current = merged;
+      setData(merged);
+
+      if (tenantIdRef.current && baselineRef.current) {
+        const nextTables = toTables(merged, tenantIdRef.current);
+        const diff = diffTables(baselineRef.current, nextTables);
+        baselineRef.current = nextTables;
+        if (hasChanges(diff)) {
+          setSyncState("syncing");
+          void pushChanges(diff, tenantIdRef.current)
+            .then(() => setSyncState("synced"))
+            .catch((err) => notifySyncFailure(err));
+        }
+      }
+    },
+    [notifySyncFailure],
+  );
 
   const syncFromServerOrLocal = useCallback(async () => {
     if (isSyncingRef.current) return;
@@ -224,10 +248,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
             setNoAccess(false);
             setHydrated(true);
+            setSyncState("synced");
             return;
           }
         } catch (err) {
           console.warn("Failed to load academy from Supabase:", err);
+          // Authenticated but the server load failed: surface it. The session
+          // remains usable from the local mirror below.
+          setSyncState("error");
+          const now = Date.now();
+          if (now - lastSyncErrorToastRef.current > 15000) {
+            lastSyncErrorToastRef.current = now;
+            toast.error(
+              "Could not reach the academy database. Showing locally stored data; changes will sync when the connection is restored.",
+            );
+          }
         }
 
         // Graceful fallback if Supabase loadAcademy returns null or errors for an authenticated user
@@ -547,11 +582,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     const enrichedInput = enrichBookingWithWeather(b, prevBooking);
     let canonical = enrichedInput;
     if (tenantIdRef.current) {
+      setSyncState("syncing");
       try {
         const persisted = await persistBooking(enrichedInput, tenantIdRef.current, d);
         canonical = enrichBookingWithWeather(persisted, enrichedInput);
+        setSyncState("synced");
       } catch (err) {
         console.error("persistBooking failed:", err);
+        setSyncState("error");
         toast.error((err as Error).message || "Failed to save booking to database.");
         throw err;
       }
@@ -667,6 +705,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       hydrated,
       me,
       noAccess,
+      syncState,
       signOut: async () => {
         hasTrackedSessionRef.current = null;
         if (typeof window !== "undefined") {
@@ -702,6 +741,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       hydrated,
       me,
       noAccess,
+      syncState,
       syncFromServerOrLocal,
       update,
       applyAndSync,

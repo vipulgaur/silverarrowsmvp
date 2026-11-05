@@ -65,15 +65,6 @@ export const Route = createFileRoute("/elearning")({
   component: ELearningPage,
 });
 
-const QUICK_ELEARNING_USERS = [
-  { label: "System Administrator", role: "Administrator (Sole Admin)", email: "admin@flysilverarrows.com" },
-  { label: "Vipul Aviation", role: "Chief CFI (VPL)", email: "vipul@flysilverarrows.com" },
-  { label: "Priya Nair", role: "Flight Instructor (CFI)", email: "priya@flysilverarrows.com" },
-  { label: "Anujay Singh", role: "Ground Instructor", email: "anujay@flysilverarrows.com" },
-  { label: "Aarav Patel", role: "Student Pilot (ARP)", email: "aarav@flysilverarrows.com" },
-  { label: "Ananya Sharma", role: "Student Pilot (ANA)", email: "ananya@flysilverarrows.com" },
-] as const;
-
 function ELearningPage() {
   const { data, me, update, signOut, reload, log } = useStore();
 
@@ -94,8 +85,8 @@ function ELearningPage() {
   const [unassigningBusy, setUnassigningBusy] = useState(false);
 
   // Unified E-Learning sign-in states
-  const [loginEmail, setLoginEmail] = useState("admin@flysilverarrows.com");
-  const [loginPassword, setLoginPassword] = useState("Vipul@1011");
+  const [loginEmail, setLoginEmail] = useState("");
+  const [loginPassword, setLoginPassword] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
 
   const isAdmin = me?.role === "admin";
@@ -363,30 +354,6 @@ function ELearningPage() {
                   {loginBusy ? "Signing in…" : "Sign In to E-Learning"}
                 </Button>
               </form>
-
-              <div className="mt-6 border-t border-border pt-4">
-                <p className="mb-2.5 text-xs font-semibold text-muted-foreground">
-                  Quick Demo Sign-In (Unified Academy Users):
-                </p>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {QUICK_ELEARNING_USERS.map((item) => (
-                    <button
-                      key={item.email}
-                      type="button"
-                      disabled={loginBusy}
-                      onClick={() => {
-                        setLoginEmail(item.email);
-                        setLoginPassword("Vipul@1011");
-                        void signInWithCredentials(item.email, "Vipul@1011");
-                      }}
-                      className="flex flex-col items-start rounded-xl border border-border bg-background px-3 py-2 text-left text-xs transition hover:border-primary/60 hover:bg-accent/40"
-                    >
-                      <span className="font-semibold text-foreground">{item.label}</span>
-                      <span className="text-[11px] text-muted-foreground">{item.role}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
             </div>
           </div>
         ) : activeCourse ? (

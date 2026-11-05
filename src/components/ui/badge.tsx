@@ -25,11 +25,31 @@ const badgeVariants = cva(
   },
 );
 
-export interface BadgeProps
-  extends React.HTMLAttributes<HTMLDivElement>, VariantProps<typeof badgeVariants> {}
+/**
+ * Semantic "tone" aliases used by status call sites (operations, CBTA, etc.).
+ * These map onto the canonical variants so call sites can express intent
+ * (ok/warn/bad/info/neutral) without inventing per-element styles.
+ */
+export type BadgeTone = "ok" | "warn" | "bad" | "info" | "neutral";
 
-function Badge({ className, variant, ...props }: BadgeProps) {
-  return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
+const TONE_TO_VARIANT: Record<BadgeTone, NonNullable<BadgeProps["variant"]>> = {
+  ok: "success",
+  warn: "warning",
+  bad: "danger",
+  info: "secondary",
+  neutral: "outline",
+};
+
+export interface BadgeProps
+  extends React.HTMLAttributes<HTMLDivElement>,
+    VariantProps<typeof badgeVariants> {
+  /** Semantic alias that resolves to a canonical `variant`. */
+  tone?: BadgeTone;
+}
+
+function Badge({ className, variant, tone, ...props }: BadgeProps) {
+  const resolvedVariant = variant ?? (tone ? TONE_TO_VARIANT[tone] : undefined);
+  return <div className={cn(badgeVariants({ variant: resolvedVariant }), className)} {...props} />;
 }
 
 export { Badge, badgeVariants };

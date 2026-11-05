@@ -1,6 +1,16 @@
 steps:
+  # 0. Verification gate: typecheck + tests must pass before building/deploying.
+  #    A red typecheck or test suite fails the build and blocks the Cloud Run deploy.
+  - name: 'node:22-alpine'
+    id: 'verify'
+    entrypoint: 'sh'
+    args:
+      - '-c'
+      - 'npm ci --no-audit --no-fund && npm run typecheck && npm test'
+
   # 1. Build container image
   - name: 'gcr.io/cloud-builders/docker'
+    waitFor: ['verify']
     args:
       - 'build'
       - '--build-arg'
