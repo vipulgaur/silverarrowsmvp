@@ -9,6 +9,41 @@ const SUPABASE_URL =
 const SUPABASE_PUBLISHABLE_KEY =
   import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || "sb_publishable_hxSYN9fl41h1zwHG1va0Gw_ZitbASFY";
 
+/**
+ * Test-env detection. Declared early so credential helpers below can gate on it.
+ * (Also re-exported as `isTestEnv` further down for existing importers.)
+ */
+const IS_TEST_ENV =
+  typeof import.meta !== "undefined" &&
+  (import.meta.env?.MODE === "test" ||
+    Boolean((import.meta.env as Record<string, unknown>)?.VITEST));
+
+/**
+ * Canonical testing password. This value is ONLY honoured inside the test runner
+ * (IS_TEST_ENV). It must never authenticate against production. Do not reuse this
+ * as a master/fallback password in any runtime code path.
+ */
+const TEST_ONLY_PASSWORD = "Vipul@1011";
+
+/** Returns the testing password only under the test runner; null everywhere else. */
+function testOnlyPassword(): string | null {
+  return IS_TEST_ENV ? TEST_ONLY_PASSWORD : null;
+}
+
+/**
+ * SEC-001 CONTAINMENT: privileged background sign-ins (admin/student "service"
+ * clients) must NOT ship a hardcoded password to the browser. These read an
+ * optional env var and are a no-op when it is absent, so a shipped bundle cannot
+ * authenticate as the administrator by default.
+ *
+ * TODO(Phase 6): remove these browser-side privileged sign-ins entirely and move
+ * the service-role operations behind a server endpoint / Supabase Edge Function.
+ * See the Phase 6 re-architecture notes.
+ */
+const ADMIN_SYNC_PASSWORD: string | undefined = import.meta.env?.VITE_ADMIN_SYNC_PASSWORD || undefined;
+const STUDENT_SYNC_PASSWORD: string | undefined =
+  import.meta.env?.VITE_STUDENT_SYNC_PASSWORD || undefined;
+
 export const realSupabase = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: typeof window !== "undefined" ? window.localStorage : undefined,
@@ -149,20 +184,23 @@ export function findOrCreateLocalUser(
   return newUser;
 }
 
-export const isTestEnv =
-  typeof import.meta !== "undefined" &&
-  (import.meta.env?.MODE === "test" ||
-    Boolean((import.meta.env as Record<string, unknown>)?.VITEST));
+export const isTestEnv = IS_TEST_ENV;
 
 /**
  * Creates a stateless Supabase client that never persists or overwrites the active browser session.
  * Used when an Admin creates a new user so the Admin's session is not replaced.
+ *
+ * SEC-001 CONTAINMENT: no longer defaults to a hardcoded password. If no password
+ * is supplied and no provisioning password is configured in the environment, this
+ * is a no-op (the account is instead provisioned lazily on first real sign-in).
  */
 export async function provisionAuthUserWithoutSessionSwitch(
   email: string,
-  password = "Vipul@1011",
+  password?: string,
 ): Promise<void> {
   if (isTestEnv) return;
+  const provisionPassword = password ?? ADMIN_SYNC_PASSWORD;
+  if (!provisionPassword) return;
   try {
     const ephemeralClient = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
       auth: {
@@ -173,22 +211,33 @@ export async function provisionAuthUserWithoutSessionSwitch(
     });
     await ephemeralClient.auth.signUp({
       email: email.trim().toLowerCase(),
-      password,
+      password: provisionPassword,
     });
   } catch {
     /* ignore background auth provisioning errors */
   }
 }
 
-let serviceClientPromise: Promise<ReturnType<typeof createClient> | null> | null = null;
-let studentServiceClientPromise: Promise<ReturnType<typeof createClient> | null> | null = null;
+// supabase-js infers a narrower default-schema generic for a no-arg
+// `createClient` type than for an actual `createClient(url, key, opts)` call.
+// Alias the *concrete* call's return type (via `realSupabase`) so the promise
+// holders and the background-client factories agree with the clients they build.
+type ServiceClient = typeof realSupabase;
+
+let serviceClientPromise: Promise<ServiceClient | null> | null = null;
+let studentServiceClientPromise: Promise<ServiceClient | null> | null = null;
 
 /**
  * Returns a background non-persisting Supabase client authenticated as the sole tenant administrator
  * (admin@flysilverarrows.com) so newly registered or unlinked users can read/write academy registration records.
  */
-export async function getAuthenticatedServiceClient(): Promise<ReturnType<typeof createClient> | null> {
+export async function getAuthenticatedServiceClient(): Promise<ServiceClient | null> {
   if (isTestEnv) return null;
+  // SEC-001 CONTAINMENT: do not sign in as the administrator from the browser
+  // unless a privileged password is explicitly configured in the environment.
+  // Absent that, return null so callers fall back to the caller's own session
+  // and RLS remains the authority. TODO(Phase 6): move server-side.
+  if (!ADMIN_SYNC_PASSWORD) return null;
   if (!serviceClientPromise) {
     serviceClientPromise = (async () => {
       try {
@@ -201,7 +250,7 @@ export async function getAuthenticatedServiceClient(): Promise<ReturnType<typeof
         });
         const { error } = await client.auth.signInWithPassword({
           email: SOLE_ADMIN_EMAIL,
-          password: "Vipul@1011",
+          password: ADMIN_SYNC_PASSWORD,
         });
         if (error) {
           serviceClientPromise = null;
@@ -222,8 +271,12 @@ export async function getAuthenticatedServiceClient(): Promise<ReturnType<typeof
  * (ananya@flysilverarrows.com) so student booking inserts trigger the PostgreSQL student approval guard
  * (setting approval_status = 'pending').
  */
-export async function getStudentServiceClient(): Promise<ReturnType<typeof createClient> | null> {
+export async function getStudentServiceClient(): Promise<ServiceClient | null> {
   if (isTestEnv) return null;
+  // SEC-001 CONTAINMENT: do not sign in as a canonical student from the browser
+  // unless a privileged password is explicitly configured in the environment.
+  // TODO(Phase 6): the student-approval-guard insert must move server-side.
+  if (!STUDENT_SYNC_PASSWORD) return null;
   if (!studentServiceClientPromise) {
     studentServiceClientPromise = (async () => {
       try {
@@ -236,7 +289,7 @@ export async function getStudentServiceClient(): Promise<ReturnType<typeof creat
         });
         const { error } = await client.auth.signInWithPassword({
           email: "ananya@flysilverarrows.com",
-          password: "Vipul@1011",
+          password: STUDENT_SYNC_PASSWORD,
         });
         if (error) {
           studentServiceClientPromise = null;
@@ -262,12 +315,22 @@ const hybridAuth = {
       };
     }
 
-    const suppliedPassword = password || "Vipul@1011";
-    // For the built-in testing roster, enforce the testing password
+    // SEC-002 CONTAINMENT: never substitute a hardcoded master password in
+    // production. The user-supplied password is used as-is. The testing password
+    // is only ever honoured inside the test runner (see testOnlyPassword()).
+    const suppliedPassword = password || testOnlyPassword() || "";
+    if (!suppliedPassword) {
+      return {
+        data: { user: null, session: null },
+        error: { message: "Please enter your password." },
+      };
+    }
+    // For the built-in testing roster, enforce the testing password (test env only)
     if (
+      isTestEnv &&
       CANONICAL_TESTING_EMAILS.has(clean) &&
       password &&
-      password !== "Vipul@1011" &&
+      password !== TEST_ONLY_PASSWORD &&
       password !== "demo12345"
     ) {
       return {
@@ -303,16 +366,8 @@ const hybridAuth = {
           password: suppliedPassword,
         });
 
-        // If user signed in with testing master password or their own password, try fallback
-        if (res.error && suppliedPassword !== "Vipul@1011") {
-          const masterRes = await realSupabase.auth.signInWithPassword({
-            email: clean,
-            password: "Vipul@1011",
-          });
-          if (!masterRes.error && masterRes.data.user) {
-            res = masterRes;
-          }
-        }
+        // SEC-002 CONTAINMENT: the production master-password fallback has been
+        // removed. Sign-in now succeeds only with the member's own credentials.
 
         // Only auto-provision Supabase auth for canonical testing roster or existing active members
         if (
@@ -405,7 +460,12 @@ const hybridAuth = {
     const clean = email.trim().toLowerCase();
     setStoredDemoSession(null);
 
-    if (!isTestEnv) {
+    // SEC-002 CONTAINMENT: never substitute a hardcoded password. Registration
+    // requires the member's own password; without one, fall through to the local
+    // signup path below (the testing password is honoured only under the runner).
+    const signupPassword = password || testOnlyPassword();
+
+    if (!isTestEnv && signupPassword) {
       try {
         // Use a non-persisting client during signUp so realSupabase does NOT fire SIGNED_IN
         // before register_member has validated and inserted the PENDING_ADMIN_APPROVAL row.
@@ -418,7 +478,7 @@ const hybridAuth = {
         });
         const res = await ephemeralClient.auth.signUp({
           email: clean,
-          password: password || "Vipul@1011",
+          password: signupPassword,
           options,
         });
         if (!res.error && res.data.user) {

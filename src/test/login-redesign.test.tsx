@@ -1,5 +1,6 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 vi.mock("@tanstack/react-router", async () => {
   const actual = await vi.importActual<Record<string, unknown>>("@tanstack/react-router");
@@ -18,7 +19,9 @@ import { Route } from "@/routes/login";
 import { FIXED_TESTING_PASSWORD, TESTING_USERS } from "@/routes/login";
 import { StoreProvider } from "@/lib/store";
 import { readDemoData, writeDemoData } from "@/lib/demo-storage";
-import { setStoredDemoSession } from "@/integrations/supabase/client";
+import { seedData } from "@/lib/seed";
+import { supabase } from "@/integrations/supabase/client";
+import { getStoredDemoSession, setStoredDemoSession } from "@/integrations/supabase/client";
 
 function renderLoginPage() {
   const Component = Route.options.component!;
@@ -29,9 +32,30 @@ function renderLoginPage() {
   );
 }
 
+/**
+ * Reset authentication state fully between tests. A prior sign-in test can leave an
+ * active demo session behind (async listeners resolve after the test finishes),
+ * which would otherwise render the "Active Session" view and hide the sign-in
+ * heading and the signup tab in the next test.
+ */
+function resetAuthState() {
+  cleanup();
+  setStoredDemoSession(null);
+  window.localStorage.clear();
+  // Also drop the active-member cache key and reset the demo store to a clean
+  // seed so a late async write or fallback user lookup from a prior sign-in test
+  // cannot resurrect a pending/authenticated session in the next test.
+  window.localStorage.removeItem("silverarrows_active_member_session");
+  writeDemoData(seedData());
+}
+
 describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
   beforeEach(() => {
-    window.localStorage.clear();
+    resetAuthState();
+  });
+
+  afterEach(() => {
+    resetAuthState();
   });
 
   it("maintains the controlled testing users directory with admin@flysilverarrows.com as sole admin and private password", () => {
@@ -97,99 +121,10 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
     expect(screen.queryByText("Vipul@1011")).toBeNull();
   });
 
-  it("selects a user from the Quick Login dropdown, displays their profile badge without exposing password, and challenges for password", async () => {
+  it("does NOT show validation error when entering a name, and only validates on matching username or phone number", async () => {
     const { container } = renderLoginPage();
-
-    const select = screen.getByTestId("quick-persona-select") as HTMLSelectElement;
-    expect(select).toBeTruthy();
-
-    // Select Ananya Sharma from the dropdown
-    fireEvent.change(select, { target: { value: "u-ana" } });
-
-    // Verify email is filled
-    const emailInput = container.querySelector("#email") as HTMLInputElement;
-    expect(emailInput.value).toBe("ananya@flysilverarrows.com");
-
-    // Verify selected persona callout appears, but NEVER displays the password
-    expect(screen.getByTestId("selected-persona-badge")).toBeTruthy();
-    expect(screen.getByTestId("selected-persona-badge").textContent).toContain("Ananya Sharma");
-    expect(screen.getByTestId("selected-persona-badge").textContent).not.toContain("Vipul@1011");
-    expect(container.textContent).not.toContain("Vipul@1011");
-
-    // Entering a wrong password rejects authentication
-    const passwordInput = container.querySelector("#password") as HTMLInputElement;
-    fireEvent.change(passwordInput, { target: { value: "wrongpass" } });
-    fireEvent.submit(container.querySelector("form")!);
-
-    // Filling the secret testing password allows successful login
-    fireEvent.change(passwordInput, { target: { value: "Vipul@1011" } });
-    fireEvent.submit(container.querySelector("form")!);
-
-    await waitFor(() => {
-      const { data } = readDemoData();
-      const existing = data.users.find((u) => u.email === "ananya@flysilverarrows.com");
-      expect(existing).toBeDefined();
-      expect(existing?.name).toBe("Ananya Sharma");
-    });
-  });
-
-  it("switches to Create New Account mode and registers a new member entry in the database table", async () => {
-    const { container } = renderLoginPage();
-
-    // Switch to Register mode
-    fireEvent.click(screen.getByTestId("mode-tab-signup"));
-
-    // Fill form
-    const firstNameInput = container.querySelector("#firstName") as HTMLInputElement;
-    const lastNameInput = container.querySelector("#lastName") as HTMLInputElement;
-    const emailInput = container.querySelector("#signupEmail") as HTMLInputElement;
-    const phoneInput = container.querySelector("#signupPhone") as HTMLInputElement;
-    const passwordInput = container.querySelector("#signupPassword") as HTMLInputElement;
-    const verifyInput = container.querySelector("#verifyPassword") as HTMLInputElement;
-
-    expect(firstNameInput).toBeTruthy();
-    expect(lastNameInput).toBeTruthy();
-    expect(emailInput).toBeTruthy();
-    expect(phoneInput).toBeTruthy();
-    expect(passwordInput).toBeTruthy();
-    expect(verifyInput).toBeTruthy();
-
-    // Verify no password is leaked in placeholder or text
-    expect(container.textContent).not.toContain("Vipul@1011");
-    expect(passwordInput.placeholder).not.toContain("Vipul@1011");
-
-    // Verify permanent @flysilverarrows.com suffix and ISD code selector (+91 - India default)
-    expect(screen.getByTestId("signup-email-suffix").textContent).toBe("@flysilverarrows.com");
-    const isdSelect = screen.getByTestId("signup-isd-select") as HTMLSelectElement;
-    expect(isdSelect.value).toBe("+91");
-    expect(isdSelect.textContent).toContain("{+91} - India");
-
-    fireEvent.change(firstNameInput, { target: { value: "Kabir" } });
-    fireEvent.change(lastNameInput, { target: { value: "Mehta" } });
-    fireEvent.change(emailInput, { target: { value: "kabir" } });
-    fireEvent.change(phoneInput, { target: { value: "98100 99887" } });
-    fireEvent.change(passwordInput, { target: { value: "Vipul@1011" } });
-    fireEvent.change(verifyInput, { target: { value: "Vipul@1011" } });
-
-    // Submit registration
-    fireEvent.submit(container.querySelector("form")!);
-
-    await waitFor(
-      () => {
-        const { data } = readDemoData();
-        const registered = data.users.find((u) => u.email === "kabir@flysilverarrows.com");
-        expect(registered).toBeDefined();
-        expect(registered?.name).toBe("Kabir Mehta");
-        expect(registered?.phone).toBe("+91 98100 99887");
-        expect(registered?.role).toBe("student");
-        expect(registered?.status).toBe("active");
-      },
-      { timeout: 4000 },
-    );
-  });
-
-  it("does NOT show validation error when entering a name, and only validates on matching username or phone number", () => {
-    const { container } = renderLoginPage();
+    // Wait for the StoreProvider to hydrate to the signed-out sign-in view.
+    await waitFor(() => expect(screen.getByTestId("mode-tab-signup")).toBeTruthy());
     fireEvent.click(screen.getByTestId("mode-tab-signup"));
 
     const firstNameInput = container.querySelector("#firstName") as HTMLInputElement;
@@ -222,8 +157,10 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
     );
   });
 
-  it("renders a landscape rectangle card (width > length), bold theme-based title, and animated sky background with clouds and airplane", () => {
+  it("renders a landscape rectangle card (width > length), bold theme-based title, and animated sky background with clouds and airplane", async () => {
     const { container } = renderLoginPage();
+    // Wait for the StoreProvider to hydrate to the signed-out sign-in view.
+    await waitFor(() => expect(screen.getByRole("heading", { name: /Portal Sign In/i })).toBeTruthy());
 
     // Verify main card has landscape width constraint max-w-[840px]
     const mainBox = container.querySelector("main");
@@ -309,5 +246,127 @@ describe("REDESIGNED CENTERED PORTAL SIGN IN & ACCOUNT REGISTRATION", () => {
     expect(container.querySelector("#lastName")).toBeNull();
     expect(container.querySelector("#signupEmail")).toBeNull();
     expect(container.querySelector("#signupPhone")).toBeNull();
+  });
+});
+
+/**
+ * Async sign-in / registration flows run in a separate, trailing describe block.
+ * These tests authenticate through the hybrid Supabase client, whose module-level
+ * demo-session listeners can resolve after the test completes. Keeping them last
+ * (and signing out at the end of each) prevents a leaked session from flipping the
+ * pure sign-in-view render tests above into an authenticated or pending view.
+ */
+describe("PORTAL ASYNC SIGN-IN & ACCOUNT REGISTRATION FLOWS", () => {
+  beforeEach(() => {
+    resetAuthState();
+  });
+
+  afterEach(() => {
+    resetAuthState();
+  });
+
+  it("selects a user from the Quick Login dropdown, displays their profile badge without exposing password, and challenges for password", async () => {
+    const { container } = renderLoginPage();
+
+    const select = screen.getByTestId("quick-persona-select") as HTMLSelectElement;
+    expect(select).toBeTruthy();
+
+    // Select Ananya Sharma from the dropdown
+    fireEvent.change(select, { target: { value: "u-ana" } });
+
+    // Verify email is filled
+    const emailInput = container.querySelector("#email") as HTMLInputElement;
+    expect(emailInput.value).toBe("ananya@flysilverarrows.com");
+
+    // Verify selected persona callout appears, but NEVER displays the password
+    expect(screen.getByTestId("selected-persona-badge")).toBeTruthy();
+    expect(screen.getByTestId("selected-persona-badge").textContent).toContain("Ananya Sharma");
+    expect(screen.getByTestId("selected-persona-badge").textContent).not.toContain("Vipul@1011");
+    expect(container.textContent).not.toContain("Vipul@1011");
+
+    // Entering a wrong password rejects authentication
+    const passwordInput = container.querySelector("#password") as HTMLInputElement;
+    fireEvent.change(passwordInput, { target: { value: "wrongpass" } });
+    fireEvent.submit(container.querySelector("form")!);
+
+    // Filling the secret testing password allows successful login
+    fireEvent.change(passwordInput, { target: { value: "Vipul@1011" } });
+    fireEvent.submit(container.querySelector("form")!);
+
+    await waitFor(() => {
+      const { data } = readDemoData();
+      const existing = data.users.find((u) => u.email === "ananya@flysilverarrows.com");
+      expect(existing).toBeDefined();
+      expect(existing?.name).toBe("Ananya Sharma");
+    });
+
+    // Ensure the async sign-in session write settles inside this test.
+    await waitFor(() =>
+      expect(getStoredDemoSession()?.user.email).toBe("ananya@flysilverarrows.com"),
+    );
+    // Sign out through the app so no authenticated session leaks into later tests.
+    await supabase.auth.signOut();
+    await waitFor(() => expect(getStoredDemoSession()).toBeNull());
+  });
+
+  it("switches to Create New Account mode and registers a new member entry in the database table", async () => {
+    const { container } = renderLoginPage();
+
+    // Switch to Register mode
+    fireEvent.click(screen.getByTestId("mode-tab-signup"));
+
+    // Fill form
+    const firstNameInput = container.querySelector("#firstName") as HTMLInputElement;
+    const lastNameInput = container.querySelector("#lastName") as HTMLInputElement;
+    const emailInput = container.querySelector("#signupEmail") as HTMLInputElement;
+    const phoneInput = container.querySelector("#signupPhone") as HTMLInputElement;
+    const passwordInput = container.querySelector("#signupPassword") as HTMLInputElement;
+    const verifyInput = container.querySelector("#verifyPassword") as HTMLInputElement;
+
+    expect(firstNameInput).toBeTruthy();
+    expect(lastNameInput).toBeTruthy();
+    expect(emailInput).toBeTruthy();
+    expect(phoneInput).toBeTruthy();
+    expect(passwordInput).toBeTruthy();
+    expect(verifyInput).toBeTruthy();
+
+    // Verify no password is leaked in placeholder or text
+    expect(container.textContent).not.toContain("Vipul@1011");
+    expect(passwordInput.placeholder).not.toContain("Vipul@1011");
+
+    // Verify permanent @flysilverarrows.com suffix and ISD code selector (+91 - India default)
+    expect(screen.getByTestId("signup-email-suffix").textContent).toBe("@flysilverarrows.com");
+    const isdSelect = screen.getByTestId("signup-isd-select") as HTMLSelectElement;
+    expect(isdSelect.value).toBe("+91");
+    expect(isdSelect.textContent).toContain("{+91} - India");
+
+    fireEvent.change(firstNameInput, { target: { value: "Kabir" } });
+    fireEvent.change(lastNameInput, { target: { value: "Mehta" } });
+    fireEvent.change(emailInput, { target: { value: "kabir" } });
+    fireEvent.change(phoneInput, { target: { value: "98100 99887" } });
+    fireEvent.change(passwordInput, { target: { value: "Vipul@1011" } });
+    fireEvent.change(verifyInput, { target: { value: "Vipul@1011" } });
+
+    // Submit registration
+    fireEvent.submit(container.querySelector("form")!);
+
+    await waitFor(
+      () => {
+        const { data } = readDemoData();
+        const registered = data.users.find((u) => u.email === "kabir@flysilverarrows.com");
+        expect(registered).toBeDefined();
+        expect(registered?.name).toBe("Kabir Mehta");
+        expect(registered?.phone).toBe("+91 98100 99887");
+        expect(registered?.role).toBe("student");
+        expect(registered?.status).toBe("active");
+      },
+      { timeout: 4000 },
+    );
+
+    // Ensure the async session write has fully settled inside this test, then sign
+    // out so no authenticated/pending session leaks into later tests.
+    await waitFor(() => expect(getStoredDemoSession()?.user.email).toBe("kabir@flysilverarrows.com"));
+    await supabase.auth.signOut();
+    await waitFor(() => expect(getStoredDemoSession()).toBeNull());
   });
 });

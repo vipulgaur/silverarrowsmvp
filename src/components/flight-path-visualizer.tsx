@@ -37,7 +37,7 @@ import {
   type AerodromeInfo,
 } from "@/lib/weather";
 import { useStore } from "@/lib/store";
-import type { FlightRulesCategory } from "@/lib/types";
+import type { FlightRulesCategory, FlightWeatherAttachment } from "@/lib/types";
 
 export interface RouteWaypoint {
   id: string;
@@ -1346,10 +1346,10 @@ export function FlightPathVisualizer({
   const selectedFlyability = useMemo(() => {
     if (!selectedWaypoint) return null;
     const w = selectedWaypoint.weather;
-    const attachment = {
+    const attachment: FlightWeatherAttachment = {
       icao: selectedWaypoint.code,
       stationName: selectedWaypoint.name,
-      observedAt: new Date().toISOString(),
+      fetchedAt: new Date().toISOString(),
       flightCategory: w.flightCategory,
       windDir: w.windDir,
       windSpeedKt: w.windSpeedKt,

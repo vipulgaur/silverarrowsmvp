@@ -126,6 +126,8 @@ describe("Aerodrome Weather Board — Browser Coords, Good-to-Fly Box, Comma Coo
       date: "2026-10-30",
       aircraftId: "a-1",
       pilotId: "u-arp",
+      offBlock: "09:00",
+      onBlock: "10:00",
       minutes: 60,
       landings: 3,
       fromIcao: "VAJB",

@@ -103,7 +103,7 @@ describe("Admin POV & Comprehensive Database Linkage Verification", () => {
       instructorId: student.instructorId,
       start: "2026-11-01T09:00:00Z",
       end: "2026-11-01T11:00:00Z",
-      type: "dual",
+      type: "dual_training",
       status: "scheduled",
       approvalStatus: "pending",
       requestedBy: student.id,
@@ -198,6 +198,7 @@ describe("Admin POV & Comprehensive Database Linkage Verification", () => {
       proposedStart: "2026-11-02T14:00:00Z",
       proposedEnd: "2026-11-02T16:00:00Z",
       reason: "weather",
+      details: "Thunderstorms forecast on original date",
       notes: "Thunderstorms forecast on original date",
       status: "pending",
       createdAt: "2026-10-27T08:00:00Z",
@@ -244,7 +245,12 @@ describe("Admin POV & Comprehensive Database Linkage Verification", () => {
         address: "74 Aerodrome Way, Flight Base",
         city: "Mumbai",
       },
-      reason: "Relocated near flight training base",
+      before: {
+        phone: student.phone,
+        address: student.address,
+        city: student.city,
+      },
+      notes: "Relocated near flight training base",
     };
 
     const dataWithProfReq: AppData = {

@@ -395,10 +395,7 @@ function AdminApprovalsPage() {
 
           {/* Post-Flight Verification ("Did the flight happen?") */}
           <PostFlightVerificationBanner
-            data={data}
-            onSelectAction={(booking, decision) =>
-              setPostFlightDialogState({ booking, initialDecision: decision })
-            }
+            onSelectDecision={(state) => setPostFlightDialogState(state)}
           />
 
           {/* Student Flight Booking Approvals */}
@@ -514,7 +511,7 @@ function AdminApprovalsPage() {
                           size="sm"
                           className="bg-emerald-600 hover:bg-emerald-700 text-white"
                           onClick={() =>
-                            setPostFlightDialogState({ booking: b, initialDecision: "yes" })
+                            setPostFlightDialogState({ booking: b, decision: "yes" })
                           }
                         >
                           <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
@@ -525,7 +522,7 @@ function AdminApprovalsPage() {
                           variant="outline"
                           className="text-destructive border-destructive/40"
                           onClick={() =>
-                            setPostFlightDialogState({ booking: b, initialDecision: "no" })
+                            setPostFlightDialogState({ booking: b, decision: "no" })
                           }
                         >
                           <XCircle className="mr-1.5 h-3.5 w-3.5" />
@@ -878,10 +875,6 @@ function AdminApprovalsPage() {
       <PostFlightCompletionDialog
         state={postFlightDialogState}
         onClose={() => setPostFlightDialogState(null)}
-        data={data}
-        actor={me}
-        commit={commit}
-        log={log}
       />
     </div>
   );

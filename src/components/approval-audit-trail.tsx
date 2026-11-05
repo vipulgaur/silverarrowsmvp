@@ -30,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import type { ActivityItem, AppData, User } from "@/lib/types";
+import type { ActivityLog, AppData, User } from "@/lib/types";
 
 export type AuditCategoryFilter = "all" | "accounts" | "flights" | "profiles";
 export type AuditOutcomeFilter = "all" | "approved" | "declined" | "other";
@@ -49,7 +49,7 @@ export interface NormalizedAuditRecord {
   targetName: string;
   targetDetails: string;
   notes?: string;
-  rawItem: ActivityItem;
+  rawItem: ActivityLog;
 }
 
 interface ApprovalAuditTrailProps {
@@ -234,9 +234,17 @@ export function ApprovalAuditTrail({
   const normalizedRecords = useMemo(() => normalizeAuditActivities(data), [data]);
 
   const filteredRecords = useMemo(() => {
+    // The filter tabs use plural labels (accounts/flights/profiles) while each
+    // record carries a singular category (account/flight/profile/system). Map the
+    // filter to the record category so category filtering actually applies.
+    const filterToCategory: Record<Exclude<AuditCategoryFilter, "all">, NormalizedAuditRecord["category"]> = {
+      accounts: "account",
+      flights: "flight",
+      profiles: "profile",
+    };
     return normalizedRecords.filter((record) => {
       // Category filter
-      if (categoryFilter !== "all" && record.category !== categoryFilter) {
+      if (categoryFilter !== "all" && record.category !== filterToCategory[categoryFilter]) {
         return false;
       }
 

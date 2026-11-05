@@ -26,9 +26,12 @@ type QueryChain = {
   range: (from: number, to: number) => QueryChain;
   maybeSingle: () => Promise<{
     data: Record<string, unknown> | null;
-    error: { message: string } | null;
+    error: { message: string; details?: string | null; code?: string } | null;
   }>;
-  single: () => Promise<{ data: Record<string, unknown>; error: { message: string } | null }>;
+  single: () => Promise<{
+    data: Record<string, unknown>;
+    error: { message: string; details?: string | null; code?: string } | null;
+  }>;
   insert: (row: Record<string, unknown>) => QueryChain;
   update: (vals: Record<string, unknown>) => QueryChain;
   upsert: (vals: Record<string, unknown>[], opts?: Record<string, unknown>) => QueryChain;
@@ -171,6 +174,11 @@ export async function pushChanges(c: Changes, tenantId: string): Promise<void> {
       .in("id", ids);
     if (error && t !== "activity_feed") throw new Error(friendly(error));
   }
+  // DATA-003: these keys are stripped before upsert because the remote tables
+  // do not have the columns yet, so the values live only in the local mirror.
+  // Migration drizzle/migrations/0009_student_portal_and_flight_extended_columns.sql
+  // adds them; once that migration is applied to the database, remove the keys
+  // here (and from EXTENDED_KEYS below) so the data round-trips to the server.
   const LOCAL_ONLY_KEYS = new Set([
     "exam_air_regulation",
     "exam_meteorology",

@@ -58,7 +58,13 @@ import {
 } from "@/components/post-flight-prompt";
 import { useLookup, useMe } from "@/lib/store";
 import { blockMinutes, can, reviewRequest, uid, visibleTo } from "@/lib/logic";
-import { reasonLabel, type Booking, type BookingType, type Reason } from "@/lib/types";
+import {
+  reasonLabel,
+  type Booking,
+  type BookingType,
+  type FlightFsmState,
+  type Reason,
+} from "@/lib/types";
 
 export const Route = createFileRoute("/_shell/schedule")({
   head: () => ({
@@ -95,7 +101,7 @@ interface CalendarEventItem {
   instructorId?: string;
   lessonId?: string;
   type: BookingType | "dual";
-  status: "scheduled" | "completed" | "cancelled";
+  status: FlightFsmState;
   approvalStatus?: "pending" | "approved" | "declined";
   route?: string;
   notes?: string;

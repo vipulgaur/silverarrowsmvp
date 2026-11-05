@@ -359,7 +359,7 @@ function FlightsPage() {
   const { data, me, deleteFlight, commit, log } = useMe();
   const lk = useLookup();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<Flight | undefined>(undefined);
+  const [editing, setEditing] = useState<Partial<Flight> | undefined>(undefined);
   const [q, setQ] = useState("");
   const [kindFilter, setKindFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -562,17 +562,18 @@ function FlightsPage() {
 
       <FlightProgressTracker className="mt-4" />
 
-      <WeatherWidget
-        className="mt-4"
-        onLogFlightWithWeather={(wx) => {
-          setEditing({
-            fromIcao: wx.icao,
-            toIcao: wx.icao,
-            weatherReport: wx,
-          });
-          setDialogOpen(true);
-        }}
-      />
+      <div className="mt-4">
+        <WeatherWidget
+          onStartFlightWithWeather={(wx) => {
+            setEditing({
+              fromIcao: wx.icao,
+              toIcao: wx.icao,
+              weatherReport: wx,
+            });
+            setDialogOpen(true);
+          }}
+        />
+      </div>
 
       <div className="mt-4">
         <FlightPathVisualizer

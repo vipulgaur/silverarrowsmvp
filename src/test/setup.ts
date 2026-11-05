@@ -34,3 +34,14 @@ if (typeof window !== "undefined" && typeof Storage !== "undefined") {
     configurable: true,
   });
 }
+
+// Unmount any React trees rendered via @testing-library/react after each test.
+// Without this, successive render() calls accumulate in the DOM and leak
+// authenticated provider trees across tests, causing role/heading queries to
+// resolve against a stale tree (e.g. a prior "Approval Pending" view).
+import { afterEach } from "vitest";
+import { cleanup } from "@testing-library/react";
+
+afterEach(() => {
+  cleanup();
+});
