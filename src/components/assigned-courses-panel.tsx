@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { lazy, Suspense, useState, type ComponentProps } from "react";
 import { format } from "date-fns";
 import {
   ArrowLeft,
@@ -31,7 +31,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
-import { LearningReader } from "@/components/learning-reader";
 import { useStore } from "@/lib/store";
 import {
   AIR_LAW_TOPICS,
@@ -81,6 +80,28 @@ import {
   airmanualBookExtras,
 } from "@/lib/airmanual-content";
 import { roleLabel, type LearningRecord, type User } from "@/lib/types";
+
+// PERF (EL-002): the learning reader pulls in the full illustration/content graph
+// (all subject figure assets and inline SVG artwork). Load it lazily so it is split
+// into its own chunk and only fetched when a learner actually opens a chapter
+// reader, keeping the course catalogue view lightweight.
+const LazyLearningReaderInner = lazy(() =>
+  import("@/components/learning-reader").then((m) => ({ default: m.LearningReader })),
+);
+
+function LearningReader(props: ComponentProps<typeof LazyLearningReaderInner>) {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[320px] items-center justify-center text-sm text-muted-foreground">
+          <span className="animate-pulse">Loading course reader…</span>
+        </div>
+      }
+    >
+      <LazyLearningReaderInner {...props} />
+    </Suspense>
+  );
+}
 
 function getCourseModuleProgress(courseId: CourseId, memberId: string, records: LearningRecord[]) {
   if (courseId === "pooley") {

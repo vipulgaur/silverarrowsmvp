@@ -214,9 +214,11 @@ function AdminCreatePage() {
       users: [...d.users, newUser],
     }));
 
-    // Pre-provision Supabase Auth credentials with testing master password on a stateless client
-    // so the currently signed-in Administrator's session is never replaced
-    void provisionAuthUserWithoutSessionSwitch(cleanEmail, "Vipul@1011");
+    // SEC-002 CONTAINMENT: no hardcoded password. Supabase Auth provisioning is a
+    // no-op unless a provisioning password is configured in the environment
+    // (VITE_ADMIN_SYNC_PASSWORD); the member is otherwise provisioned lazily on
+    // their first real sign-in. The Admin's active session is never replaced.
+    void provisionAuthUserWithoutSessionSwitch(cleanEmail);
 
     log(
       "user_created",

@@ -1,7 +1,7 @@
 import type { ComponentProps, ElementType, ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
-export type ChipTone = "ok" | "soon" | "expired" | "none";
+export type ChipTone = "ok" | "soon" | "warn" | "expired" | "none";
 export type ChipVariant = "default" | "success" | "warning" | "danger" | "info";
 
 export function Chip({
@@ -18,7 +18,7 @@ export function Chip({
   const resolvedVariant: ChipVariant =
     tone === "ok"
       ? "success"
-      : tone === "soon"
+      : tone === "soon" || tone === "warn"
         ? "warning"
         : tone === "expired"
           ? "danger"
@@ -136,14 +136,17 @@ export function PageHeader({
   title,
   subtitle,
   action,
+  actions: actionsProp,
   children,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   action?: ReactNode;
+  /** Alias for `action` used by several call sites. */
+  actions?: ReactNode;
   children?: ReactNode;
 }) {
-  const actions = children ?? action;
+  const actions = children ?? action ?? actionsProp;
   return (
     <div className="mb-6 flex flex-wrap items-center justify-between gap-4 border-b border-border pb-5">
       <div>
@@ -187,13 +190,19 @@ export function Stat({
   value,
   hint,
   subtext,
+  sub: subProp,
+  tone: _tone,
 }: {
   label: ReactNode;
   value: ReactNode;
   hint?: ReactNode;
   subtext?: ReactNode;
+  /** Alias for `hint`/`subtext` used by several call sites. */
+  sub?: ReactNode;
+  /** Accepted for call-site intent; the KPI card has no tone styling today. */
+  tone?: string;
 }) {
-  const sub = hint ?? subtext;
+  const sub = hint ?? subtext ?? subProp;
   return (
     <div className="rounded-2xl border border-border bg-card p-4 shadow-xs">
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
